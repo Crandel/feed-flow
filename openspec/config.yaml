@@ -30,3 +30,9 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+rules:
+  tasks:
+    - Break tasks into chunks of max 2 hours
+    - Include unit test tasks
+    - If tasks require manual testing, stop execution and ask user to do the testing. Continue only if user confirm working solution
+    - Do not work on several tasks at once, do the task sequentially, do not jump to the next task until the current one is completely finished and marked as done in task list. Your session will end any time and all progress could be lost.
