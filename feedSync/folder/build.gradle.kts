@@ -5,6 +5,7 @@ plugins {
 kotlin {
     android {
         namespace = "com.prof18.feedflow.feedsync.folder"
+        withHostTest {}
     }
 
     applyDefaultHierarchyTemplate()
@@ -21,11 +22,30 @@ kotlin {
             }
         }
 
+        commonTest {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+
         jvmTest {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.multiplatform.settings.test)
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(project(":feedSync:dropbox"))
+                implementation(project(":feedSync:googledrive"))
+            }
+        }
+
+        getByName("androidHostTest") {
+            dependsOn(commonTest.get())
+
+            dependencies {
+                implementation(libs.org.robolectric)
+                implementation(libs.androidx.test.core.ktx)
+                implementation(libs.multiplatform.settings.test)
             }
         }
     }

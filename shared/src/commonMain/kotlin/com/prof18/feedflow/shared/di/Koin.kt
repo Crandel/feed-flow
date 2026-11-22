@@ -563,6 +563,7 @@ private fun getCoreModule(appConfig: AppConfig) =
                 currentOS = get(),
                 dropboxSettings = get(),
                 googleDriveSettings = get(),
+                folderSettings = get(),
                 icloudSettings = get(),
                 appConfig = appConfig,
                 gReaderRepository = get(),
