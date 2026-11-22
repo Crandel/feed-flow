@@ -345,6 +345,7 @@ private fun selectCloudAccount(provider: CloudProvider, settings: Settings) {
         CloudProvider.DROPBOX -> DropboxSettings(settings).setDropboxData("fixture-credentials")
         CloudProvider.GOOGLE_DRIVE -> GoogleDriveSettings(settings).setGoogleDriveLinked(true)
         CloudProvider.ICLOUD -> ICloudSettings(settings).setUseICloud(true)
+        CloudProvider.FOLDER -> error("Folder is unsupported by iOS")
     }
 }
 

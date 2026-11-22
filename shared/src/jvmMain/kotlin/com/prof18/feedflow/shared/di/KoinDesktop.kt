@@ -36,6 +36,7 @@ import com.prof18.feedflow.shared.domain.opml.OpmlFeedHandlerJvm
 import com.prof18.feedflow.shared.domain.parser.JvmFeedItemContentFileHandler
 import com.prof18.feedflow.shared.logging.SentryLogWriter
 import com.prof18.feedflow.shared.presentation.DropboxSyncViewModel
+import com.prof18.feedflow.shared.presentation.FolderSyncViewModel
 import com.prof18.feedflow.shared.presentation.GoogleDriveSyncViewModel
 import com.prof18.feedflow.shared.presentation.ICloudSyncViewModel
 import com.russhwolf.settings.PreferencesSettings
@@ -167,6 +168,19 @@ internal actual fun getPlatformModule(appEnvironment: AppEnvironment): Module = 
         )
     }
 
+    viewModel {
+        FolderSyncViewModel(
+            logger = getWith("FolderSyncViewModel"),
+            folderSettings = get(),
+            folderSyncDataSource = get(),
+            feedSyncRepository = get(),
+            dateFormatter = get(),
+            accountsRepository = get(),
+            feedFetcherRepository = get(),
+            feedSyncMessageQueue = get(),
+        )
+    }
+
     single<FeedSyncWorker> {
         FeedSyncJvmWorker(
             dropboxDataSource = get(),
@@ -182,6 +196,8 @@ internal actual fun getPlatformModule(appEnvironment: AppEnvironment): Module = 
             googleDriveSettings = get(),
             accountsRepository = get(),
             iCloudSettings = get(),
+            folderSyncDataSource = get(),
+            folderSettings = get(),
         )
     }
 

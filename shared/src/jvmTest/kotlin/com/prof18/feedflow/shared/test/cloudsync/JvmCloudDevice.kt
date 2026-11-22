@@ -10,6 +10,8 @@ import com.prof18.feedflow.feedsync.database.di.FEED_SYNC_SCOPE_NAME
 import com.prof18.feedflow.feedsync.database.di.SYNC_DB_DRIVER
 import com.prof18.feedflow.feedsync.dropbox.DropboxDataSource
 import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
+import com.prof18.feedflow.feedsync.folder.FolderSettings
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceJvm
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveSettings
 import com.prof18.feedflow.feedsync.icloud.ICloudSettings
@@ -66,6 +68,7 @@ internal actual fun createCloudDevice(
                 }
                 single<DropboxDataSource> { JvmDropboxTransport(store, id) }
                 single<GoogleDriveDataSourceJvm> { JvmDriveTransport(store, id, get()) }
+                single<FolderSyncDataSource> { JvmFolderTransport(store, id) }
                 single<FeedSyncWorker> {
                     FeedSyncJvmWorker(
                         dropboxDataSource = get(),
@@ -81,6 +84,8 @@ internal actual fun createCloudDevice(
                         googleDriveSettings = get(),
                         accountsRepository = get(),
                         iCloudSettings = get(),
+                        folderSyncDataSource = get(),
+                        folderSettings = get(),
                         syncDirectory = directory,
                         scope = workerScope,
                         iCloudBridge = JvmICloudTransport(store, id, syncFile),
@@ -126,5 +131,6 @@ internal fun selectCloudAccount(provider: CloudProvider, settings: Settings) {
         CloudProvider.DROPBOX -> DropboxSettings(settings).setDropboxData("fixture-credentials")
         CloudProvider.GOOGLE_DRIVE -> GoogleDriveSettings(settings).setGoogleDriveLinked(true)
         CloudProvider.ICLOUD -> ICloudSettings(settings).setUseICloud(true)
+        CloudProvider.FOLDER -> FolderSettings(settings).setFolderLocation("fixture-folder")
     }
 }

@@ -11,6 +11,7 @@ import co.touchlab.kermit.Logger
 import com.prof18.feedflow.core.model.CloudBackupNotFoundException
 import com.prof18.feedflow.core.model.ErrorCode
 import com.prof18.feedflow.core.model.SyncAccounts
+import com.prof18.feedflow.core.model.SyncDownloadError
 import com.prof18.feedflow.core.model.SyncFeedError
 import com.prof18.feedflow.core.model.SyncResult
 import com.prof18.feedflow.core.model.SyncUploadError
@@ -23,6 +24,9 @@ import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
 import com.prof18.feedflow.feedsync.dropbox.DropboxStringCredentials
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadConflictException
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadParam
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
+import com.prof18.feedflow.feedsync.folder.FolderSettings
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceAndroid
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadParam
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveNeedsReAuthException
@@ -53,6 +57,8 @@ internal class FeedSyncAndroidWorker(
     private val googleDriveSettings: GoogleDriveSettings,
     private val settingsRepository: SettingsRepository,
     private val accountsRepository: AccountsRepository,
+    private val folderSyncDataSource: FolderSyncDataSource,
+    private val folderSettings: FolderSettings,
 ) : FeedSyncWorker {
     private val mutex = Mutex()
     private var downloadSession: String? = null
@@ -123,12 +129,17 @@ internal class FeedSyncAndroidWorker(
                 } catch (e: GoogleDriveNeedsReAuthException) {
                     logger.e("Google Drive needs re-authorization", e)
                     SyncResult.GoogleDriveNeedReAuth()
+                } catch (e: FolderNotAccessibleException) {
+                    logger.e("Sync folder is not accessible during upload", e)
+                    emitErrorMessage(SyncUploadError.FolderNotAccessible)
+                    SyncResult.General(SyncUploadError.FolderNotAccessible)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     logger.e("Upload failed", e)
-                    emitErrorMessage(SyncUploadError.DropboxUploadFailed)
-                    return@withLock SyncResult.General(SyncUploadError.DropboxUploadFailed)
+                    val uploadError = uploadErrorForAccount()
+                    emitErrorMessage(uploadError)
+                    return@withLock SyncResult.General(uploadError)
                 } finally {
                     snapshot?.delete()
                 }
@@ -165,13 +176,21 @@ internal class FeedSyncAndroidWorker(
                 logger.d { "Upload to Google Drive successfully" }
             }
 
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.upload(
+                    source = databaseFile.path,
+                    fileName = getDatabaseNameWithExtension(),
+                )
+                folderSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Upload to folder successfully" }
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.ICLOUD,
             SyncAccounts.FRESH_RSS,
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
-            SyncAccounts.FOLDER,
             -> {
                 // Do nothing
             }
@@ -197,6 +216,9 @@ internal class FeedSyncAndroidWorker(
         } catch (e: GoogleDriveNeedsReAuthException) {
             logger.e("Google Drive needs re-authorization", e)
             SyncResult.GoogleDriveNeedReAuth()
+        } catch (e: FolderNotAccessibleException) {
+            logger.e("Sync folder is not accessible during download", e)
+            SyncResult.General(SyncDownloadError.FolderNotAccessible)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -242,13 +264,23 @@ internal class FeedSyncAndroidWorker(
                 SyncResult.Success
             }
 
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.download(
+                    fileName = getDatabaseNameWithExtension(),
+                    destination = stagedFile.path,
+                )
+                installDownloadedFile(stagedFile)
+                folderSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Download from folder successfully" }
+                SyncResult.Success
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.ICLOUD,
             SyncAccounts.FRESH_RSS,
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
-            SyncAccounts.FOLDER,
             -> {
                 SyncResult.Success
             }
@@ -317,7 +349,15 @@ internal class FeedSyncAndroidWorker(
 
     private fun getDatabaseNameWithExtension(): String = syncDatabaseFileProvider.remoteFileName
 
-    private suspend fun emitErrorMessage(errorCode: ErrorCode) = feedSyncMessageQueue.emitResult(SyncResult.General(errorCode))
+    private fun uploadErrorForAccount(): ErrorCode =
+        when (accountsRepository.getCurrentSyncAccount()) {
+            SyncAccounts.FOLDER -> SyncUploadError.FolderUploadFailed
+            else -> SyncUploadError.DropboxUploadFailed
+        }
+
+    private suspend fun emitErrorMessage(errorCode: ErrorCode) = feedSyncMessageQueue.emitResult(
+        SyncResult.General(errorCode),
+    )
 
     private suspend fun emitSuccessMessage() = feedSyncMessageQueue.emitResult(SyncResult.Success)
 }

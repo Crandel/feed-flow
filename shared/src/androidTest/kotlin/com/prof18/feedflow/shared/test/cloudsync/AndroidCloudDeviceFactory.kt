@@ -8,6 +8,8 @@ import com.prof18.feedflow.feedsync.database.di.FEED_SYNC_SCOPE_NAME
 import com.prof18.feedflow.feedsync.database.di.SYNC_DB_DRIVER
 import com.prof18.feedflow.feedsync.dropbox.DropboxDataSource
 import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
+import com.prof18.feedflow.feedsync.folder.FolderSettings
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceAndroid
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveSettings
 import com.prof18.feedflow.shared.domain.feedsync.FeedSyncAndroidWorker
@@ -65,6 +67,7 @@ internal fun createAndroidCloudDevice(
                 }
                 single<DropboxDataSource> { AndroidDropboxTransport(store, id) }
                 single<GoogleDriveDataSourceAndroid> { AndroidDriveTransport(store, id, get()) }
+                single<FolderSyncDataSource> { AndroidFolderTransport(store, id) }
                 single<FeedSyncAndroidWorker> {
                     FeedSyncAndroidWorker(
                         context = get(),
@@ -87,6 +90,8 @@ internal fun createAndroidCloudDevice(
                         googleDriveSettings = get(),
                         settingsRepository = get(),
                         accountsRepository = get(),
+                        folderSyncDataSource = get(),
+                        folderSettings = get(),
                     )
                 }
                 single<FeedSyncWorker> { get<FeedSyncAndroidWorker>() }
@@ -101,5 +106,6 @@ private fun selectCloudAccount(provider: CloudProvider, settings: Settings) {
         CloudProvider.DROPBOX -> DropboxSettings(settings).setDropboxData("fixture-credentials")
         CloudProvider.GOOGLE_DRIVE -> GoogleDriveSettings(settings).setGoogleDriveLinked(true)
         CloudProvider.ICLOUD -> error("iCloud is unsupported by Android")
+        CloudProvider.FOLDER -> FolderSettings(settings).setFolderLocation("fixture-folder")
     }
 }

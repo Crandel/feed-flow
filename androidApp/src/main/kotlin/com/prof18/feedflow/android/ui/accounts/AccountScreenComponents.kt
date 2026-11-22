@@ -55,13 +55,13 @@ fun AccountsContent(
 ) {
     Column(
         modifier =
-            modifier
-                .padding(top = contentPadding.calculateTopPadding()),
+        modifier
+            .padding(top = contentPadding.calculateTopPadding()),
     ) {
         Text(
             modifier =
-                Modifier
-                    .padding(horizontal = Spacing.regular),
+            Modifier
+                .padding(horizontal = Spacing.regular),
             text = LocalFeedFlowStrings.current.accountsDescription,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -70,8 +70,8 @@ fun AccountsContent(
 
         LazyColumn(
             modifier =
-                Modifier
-                    .padding(top = Spacing.medium),
+            Modifier
+                .padding(top = Spacing.medium),
         ) {
             items(filteredAccounts, key = { it.name }) { account ->
                 val isEnabled = syncAccount == SyncAccounts.LOCAL || syncAccount == account
@@ -89,19 +89,19 @@ fun AccountsContent(
                     }
                 Row(
                     modifier =
-                        Modifier
-                            .testTag(AccountE2eIds.providerRow(account))
-                            .padding(horizontal = Spacing.regular)
-                            .clip(RoundedCornerShape(size = 8.dp))
-                            .background(
-                                color =
-                                    if (account == selectedAccount) {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    } else {
-                                        Color.Transparent
-                                    },
-                            ).clickable(enabled = isEnabled, onClick = onClick)
-                            .alpha(alpha = if (isEnabled) 1f else 0.5f),
+                    Modifier
+                        .testTag(AccountE2eIds.providerRow(account))
+                        .padding(horizontal = Spacing.regular)
+                        .clip(RoundedCornerShape(size = 8.dp))
+                        .background(
+                            color =
+                            if (account == selectedAccount) {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            } else {
+                                Color.Transparent
+                            },
+                        ).clickable(enabled = isEnabled, onClick = onClick)
+                        .alpha(alpha = if (isEnabled) 1f else 0.5f),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AccountsItem(
@@ -113,8 +113,8 @@ fun AccountsContent(
                     if (syncAccount == account) {
                         Icon(
                             modifier =
-                                Modifier
-                                    .padding(horizontal = Spacing.regular),
+                            Modifier
+                                .padding(horizontal = Spacing.regular),
                             imageVector = Icons.Filled.Check,
                             contentDescription = null,
                         )
@@ -160,10 +160,10 @@ private fun AccountsItem(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
-            modifier.padding(
-                horizontal = Spacing.small,
-                vertical = Spacing.regular,
-            ),
+        modifier.padding(
+            horizontal = Spacing.small,
+            vertical = Spacing.regular,
+        ),
         horizontalArrangement = Arrangement.spacedBy(Spacing.regular),
     ) {
         Icon(

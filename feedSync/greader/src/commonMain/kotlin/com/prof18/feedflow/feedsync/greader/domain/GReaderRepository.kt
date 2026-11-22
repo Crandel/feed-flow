@@ -114,10 +114,10 @@ class GReaderRepository internal constructor(
                                 continuation = continuation,
                                 lastModified = lastUpdate,
                                 excludeTargets =
-                                    listOf(
-                                        Stream.Read().id,
-                                        Stream.Starred().id,
-                                    ),
+                                listOf(
+                                    Stream.Read().id,
+                                    Stream.Starred().id,
+                                ),
                                 max = PAGE_SIZE,
                             )
                         },

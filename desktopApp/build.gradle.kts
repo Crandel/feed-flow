@@ -17,6 +17,7 @@ plugins {
 
 @Suppress("UNCHECKED_CAST")
 val appVersionName = extra["appVersionName"] as () -> String
+
 @Suppress("UNCHECKED_CAST")
 val appVersionCode = extra["appVersionCode"] as () -> Int
 
@@ -178,10 +179,12 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
-        vendor = JvmVendorSpec.JETBRAINS
-    })
+    javaLauncher.set(
+        javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(25)
+            vendor = JvmVendorSpec.JETBRAINS
+        },
+    )
     if (isLinux) {
         // End each native worker before surfaces from multiple classes accumulate.
         forkEvery = 1

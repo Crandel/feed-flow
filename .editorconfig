@@ -1,0 +1,56 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# Kotlin style mirrors the enforced settings in config/detekt/detekt.yml (ktlint wrapper),
+# so a standalone ktlint run and `./gradlew detekt` agree and formatting creates no diffs.
+[*.{kt,kts}]
+indent_size = 4
+ij_kotlin_continuation_indent_size = 4
+# The detekt ktlint wrapper runs the intellij_idea style.
+ktlint_code_style = intellij_idea
+ktlint_experimental = disabled
+# Keep ktlint's line-length rule in sync with the detekt `style: MaxLineLength` (120) rule.
+max_line_length = 120
+# Trailing commas are required (ktlint TrailingCommaOn*Site are active in the detekt config).
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_allow_trailing_comma_on_declaration_site = true
+# Mirror of the rules the project disables in config/detekt/detekt.yml `ktlint:` section.
+# The signature-collapsing rules are enabled by ktlint for all code styles since 1.8 (and with
+# an explicit max_line_length they rewrite multi-line expression bodies), so they are off here.
+ktlint_standard_class-signature = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_enum-wrapping = disabled
+ktlint_standard_blank-line-between-when-conditions = disabled
+ktlint_standard_backing-property-naming = disabled
+ktlint_standard_property-naming = disabled
+# PascalCase @Composable functions and backticked test names are the project convention
+# (detekt mirrors this: FunctionNaming ignoreAnnotated Composable + backtick pattern).
+ktlint_function_naming_ignore_when_annotated_with = Composable
+ktlint_ignore_back_ticked_identifier = true
+
+[*.{swift}]
+indent_size = 4
+
+[*.xml]
+indent_size = 4
+
+[*.sq]
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.json]
+indent_size = 2
+
+[*.md]
+# Two consecutive trailing spaces are a Markdown hard line break.
+trim_trailing_whitespace = false

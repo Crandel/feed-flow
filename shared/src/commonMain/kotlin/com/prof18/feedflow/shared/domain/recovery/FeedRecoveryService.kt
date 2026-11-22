@@ -127,8 +127,8 @@ internal class FeedRecoveryService(
                     id = request.subscriptionUrl.hashCode().toString(),
                     url = request.subscriptionUrl,
                     title =
-                        rssChannelMapper.getFeedTitle(channel)
-                            ?: throw WebsiteVerificationFailure(VerificationFailure.InvalidContent),
+                    rssChannelMapper.getFeedTitle(channel)
+                        ?: throw WebsiteVerificationFailure(VerificationFailure.InvalidContent),
                     category = request.category,
                     lastSyncTimestamp = now,
                     logoUrl = feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.subscriptionUrl),
@@ -154,8 +154,8 @@ internal class FeedRecoveryService(
                 request.source.copy(
                     lastSyncTimestamp = now,
                     logoUrl =
-                        request.source.logoUrl
-                            ?: feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.source.url),
+                    request.source.logoUrl
+                        ?: feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.source.url),
                     websiteUrl = request.source.websiteUrl ?: channel.link,
                     fetchFailed = false,
                 )

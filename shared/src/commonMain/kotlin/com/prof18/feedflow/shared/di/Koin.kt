@@ -165,10 +165,10 @@ private fun getLoggingModule(
         val baseLogger =
             Logger(
                 config =
-                    StaticConfig(
-                        logWriterList = loggers,
-                        minSeverity = minSeverity,
-                    ),
+                StaticConfig(
+                    logWriterList = loggers,
+                    minSeverity = minSeverity,
+                ),
                 tag = "FeedFlow",
             )
         factory {

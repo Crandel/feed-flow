@@ -20,13 +20,13 @@
 
 ## 4. Worker integration
 
-- [ ] 4.1 Add the FOLDER branches to `FeedSyncJvmWorker.accountSpecificUpload`/`accountSpecificDownload` and map upload failures for FOLDER to SU6/SU7 (Dropbox and Google Drive keep SU2). Update the `FolderSettings` timestamps. Verify with `FeedSyncJvmWorkerTest` cases for success, missing backup (`BackupNotFound`), and folder not accessible.
-- [ ] 4.2 Add the same FOLDER branches to `FeedSyncAndroidWorker`. Verify with `./gradlew --quiet --console=plain :shared:testAndroidHostTest --tests "*FeedSyncAndroidWorker*"` or the equivalent host test task.
-- [ ] 4.3 Onboard FOLDER into the cloud-sync harness (`CloudProvider.FOLDER` in `CloudStore.kt`, JVM and Android transports backed by `CloudStore`, `selectCloudAccount` branches, `CloudFeedAndCategoryRegressions` branch, provider entries in `DesktopCloudSyncSuccessTest`, `AndroidCloudSyncSuccessTest`, `AndroidCloudWorkManagerSuccessTest`, artifact exchange tests) as in `docs/CLOUD_SYNC_LIVE_TESTING.md`. Update the provider matrix in `docs/CLOUD_SYNC_TESTING.md`. Verify with `./gradlew --quiet --console=plain :shared:jvmTest :shared:testAndroidHostTest` (or the matching host test task) and a passing Folder run in the output.
+- [x] 4.1 Add the FOLDER branches to `FeedSyncJvmWorker.accountSpecificUpload`/`accountSpecificDownload` and map upload failures for FOLDER to SU6/SU7 (Dropbox and Google Drive keep SU2). Update the `FolderSettings` timestamps. Verify with `FeedSyncJvmWorkerTest` cases for success, missing backup (`BackupNotFound`), and folder not accessible.
+- [x] 4.2 Add the same FOLDER branches to `FeedSyncAndroidWorker`. Verify with `./gradlew --quiet --console=plain :shared:testAndroidHostTest --tests "*FeedSyncAndroidWorker*"` or the equivalent host test task.
+- [x] 4.3 Onboard FOLDER into the cloud-sync harness (`CloudProvider.FOLDER` in `CloudStore.kt`, JVM and Android transports backed by `CloudStore`, `selectCloudAccount` branches, `CloudFeedAndCategoryRegressions` branch, provider entries in `DesktopCloudSyncSuccessTest`, `AndroidCloudSyncSuccessTest`, `AndroidCloudWorkManagerSuccessTest`, artifact exchange tests) as in `docs/CLOUD_SYNC_LIVE_TESTING.md`. Update the provider matrix in `docs/CLOUD_SYNC_TESTING.md`. Verify with `./gradlew --quiet --console=plain :shared:jvmTest :shared:testAndroidHostTest` (or the matching host test task) and a passing Folder run in the output.
 
 ## 5. ViewModel
 
-- [ ] 5.1 Implement `FolderSyncViewModel` in `shared` commonMain (link with access check, `setFolderAccount`, `firstSync`, `fetchFeeds`, backup, unlink with release, `deleteAll`, `clearAccount`; UI state with last upload and last download dates). Register it in Koin for Android and desktop. Verify with a ViewModel unit test using Turbine: link success, link failure (not accessible), existing backup restored on link, unlink keeps the backup file.
+- [x] 5.1 Implement `FolderSyncViewModel` in `shared` commonMain (link with access check, `setFolderAccount`, `firstSync`, `fetchFeeds`, backup, unlink with release, `deleteAll`, `clearAccount`; UI state with last upload and last download dates). Register it in Koin for Android and desktop. Verify with a ViewModel unit test using Turbine: link success, link failure (not accessible), existing backup restored on link, unlink keeps the backup file.
 
 ## 6. Android UI
 

@@ -20,6 +20,9 @@ import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
 import com.prof18.feedflow.feedsync.dropbox.DropboxStringCredentials
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadConflictException
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadParam
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
+import com.prof18.feedflow.feedsync.folder.FolderSettings
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceJvm
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadParam
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveNeedsReAuthException
@@ -57,6 +60,8 @@ internal class FeedSyncJvmWorker(
     private val googleDriveSettings: GoogleDriveSettings,
     private val accountsRepository: AccountsRepository,
     private val iCloudSettings: ICloudSettings,
+    private val folderSyncDataSource: FolderSyncDataSource,
+    private val folderSettings: FolderSettings,
     private val syncDirectory: File = File(AppDataPathBuilder.getAppDataPath(appEnvironment)),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val iCloudBridge: ICloudFileTransfer = ICloudNativeBridge(),
@@ -141,6 +146,9 @@ internal class FeedSyncJvmWorker(
                 } catch (e: GoogleDriveNeedsReAuthException) {
                     logger.d("Google Drive needs re-authorization", e)
                     feedSyncMessageQueue.emitResult(SyncResult.GoogleDriveNeedReAuth())
+                } catch (e: FolderNotAccessibleException) {
+                    logger.d("Sync folder is not accessible during upload", e)
+                    feedSyncMessageQueue.emitResult(SyncResult.General(SyncUploadError.FolderNotAccessible))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -222,12 +230,21 @@ internal class FeedSyncJvmWorker(
                 true
             }
 
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.upload(
+                    source = uploadFile.path,
+                    fileName = getDatabaseNameWithExtension(),
+                )
+                folderSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Upload to folder successfully" }
+                true
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.FRESH_RSS,
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
-            SyncAccounts.FOLDER,
             -> {
                 true
             }
@@ -252,6 +269,9 @@ internal class FeedSyncJvmWorker(
         } catch (e: GoogleDriveNeedsReAuthException) {
             logger.d("Google Drive needs re-authorization", e)
             SyncResult.GoogleDriveNeedReAuth()
+        } catch (e: FolderNotAccessibleException) {
+            logger.d("Sync folder is not accessible during download", e)
+            SyncResult.General(SyncDownloadError.FolderNotAccessible)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -286,7 +306,7 @@ internal class FeedSyncJvmWorker(
 
             SyncAccounts.ICLOUD -> {
                 val result = iCloudBridge.downloadToFile(appEnvironment.isDebug(), stagedFile.absolutePath)
-                when (DownloadResult.fromCode(result)) {
+                when (val download = DownloadResult.fromCode(result)) {
                     DownloadResult.SUCCESS -> {
                         installDownloadedFile(stagedFile)
                         iCloudSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
@@ -294,36 +314,16 @@ internal class FeedSyncJvmWorker(
                         SyncResult.Success
                     }
 
-                    DownloadResult.URL_NULL -> {
-                        logger.d { "iCloud URL is null" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.TEMP_URL_NULL -> {
-                        logger.d { "Temporary URL is null" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.DOWNLOAD_ERROR -> {
-                        logger.d { "Error during iCloud download" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.DATABASE_REPLACE_ERROR -> {
-                        logger.d { "Error during database replace" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
+                    DownloadResult.REMOTE_FILE_NOT_FOUND -> {
+                        SyncResult.BackupNotFound(SyncDownloadError.ICloudDownloadFailed)
                     }
 
                     DownloadResult.FILE_NOT_FOUND -> {
                         SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
                     }
 
-                    DownloadResult.REMOTE_FILE_NOT_FOUND -> {
-                        SyncResult.BackupNotFound(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.UNKNOWN_ERROR -> {
-                        logger.d { "Unknown error during iCloud download. Check the enum mapping" }
+                    else -> {
+                        logger.d { icloudDownloadFailureMessage(download) }
                         SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
                     }
                 }
@@ -350,12 +350,22 @@ internal class FeedSyncJvmWorker(
                 SyncResult.Success
             }
 
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.download(
+                    fileName = getDatabaseNameWithExtension(),
+                    destination = stagedFile.path,
+                )
+                installDownloadedFile(stagedFile)
+                folderSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Download from folder successfully" }
+                SyncResult.Success
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.FRESH_RSS,
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
-            SyncAccounts.FOLDER,
             -> {
                 logger.d { "current sync account does not require cloud download" }
                 SyncResult.Success
@@ -444,7 +454,23 @@ internal class FeedSyncJvmWorker(
 
     private fun getDatabaseNameWithExtension(): String = "${getDatabaseName()}.db"
 
-    private suspend fun emitErrorMessage() = feedSyncMessageQueue.emitResult(SyncResult.General(SyncUploadError.DropboxUploadFailed))
+    private fun icloudDownloadFailureMessage(result: DownloadResult): String =
+        when (result) {
+            DownloadResult.URL_NULL -> "iCloud URL is null"
+            DownloadResult.TEMP_URL_NULL -> "Temporary URL is null"
+            DownloadResult.DATABASE_REPLACE_ERROR -> "Error during database replace"
+            DownloadResult.UNKNOWN_ERROR -> "Unknown error during iCloud download. Check the enum mapping"
+            else -> "Error during iCloud download"
+        }
+
+    private suspend fun emitErrorMessage() {
+        val uploadError =
+            when (accountsRepository.getCurrentSyncAccount()) {
+                SyncAccounts.FOLDER -> SyncUploadError.FolderUploadFailed
+                else -> SyncUploadError.DropboxUploadFailed
+            }
+        feedSyncMessageQueue.emitResult(SyncResult.General(uploadError))
+    }
 
     private suspend fun emitSuccessMessage() = feedSyncMessageQueue.emitResult(SyncResult.Success)
 }

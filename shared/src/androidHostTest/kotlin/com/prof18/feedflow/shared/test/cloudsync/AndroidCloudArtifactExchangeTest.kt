@@ -18,4 +18,9 @@ class AndroidCloudArtifactExchangeTest : KoinTestBase() {
     fun `google drive snapshot exchange`() = runTest(testDispatcher) {
         runCloudArtifactExchange(CloudProvider.GOOGLE_DRIVE)
     }
+
+    @Test
+    fun `folder snapshot exchange`() = runTest(testDispatcher) {
+        runCloudArtifactExchange(CloudProvider.FOLDER)
+    }
 }

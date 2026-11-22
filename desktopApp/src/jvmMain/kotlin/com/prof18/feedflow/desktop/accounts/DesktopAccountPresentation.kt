@@ -30,17 +30,17 @@ internal fun desktopAccountPresentations(
                 account = account,
                 title = account.desktopTitle(strings),
                 description =
-                    if (account.isBackupProvider()) {
-                        strings.desktopAccountsBackupDescription
-                    } else {
-                        strings.desktopAccountsReaderDescription
-                    },
+                if (account.isBackupProvider()) {
+                    strings.desktopAccountsBackupDescription
+                } else {
+                    strings.desktopAccountsReaderDescription
+                },
                 status =
-                    when {
-                        isCurrent -> strings.desktopAccountsConnectedStatus
-                        enabled -> strings.desktopAccountsAvailableStatus
-                        else -> strings.desktopAccountsUnavailableStatus
-                    },
+                when {
+                    isCurrent -> strings.desktopAccountsConnectedStatus
+                    enabled -> strings.desktopAccountsAvailableStatus
+                    else -> strings.desktopAccountsUnavailableStatus
+                },
                 isEnabled = enabled,
             )
         }.toImmutableList()

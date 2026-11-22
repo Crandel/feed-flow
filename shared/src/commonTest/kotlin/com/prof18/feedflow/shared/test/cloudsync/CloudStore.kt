@@ -6,6 +6,7 @@ internal enum class CloudProvider {
     DROPBOX,
     GOOGLE_DRIVE,
     ICLOUD,
+    FOLDER,
 }
 
 internal enum class CloudStoreOperation {
@@ -208,5 +209,6 @@ internal class CloudStore {
         CloudProvider.DROPBOX -> key.name
         CloudProvider.GOOGLE_DRIVE -> "drive-file-${nextDriveId++}"
         CloudProvider.ICLOUD -> "icloud-file:${key.account}:${key.name}"
+        CloudProvider.FOLDER -> key.name
     }
 }

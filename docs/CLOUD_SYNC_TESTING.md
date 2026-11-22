@@ -3,8 +3,8 @@
 For the component map, data model, refresh/upload flows, and provider guarantees,
 start with the [cloud sync architecture](CLOUD_SYNC_ARCHITECTURE.md).
 
-This harness covers successful Dropbox, Google Drive and iCloud workflows and
-regressions added with the cloud sync fixes. Server accounts (GReader, Feedbin and
+This harness covers successful Dropbox, Google Drive, iCloud and Folder
+workflows and regressions added with the cloud sync fixes. Server accounts (GReader, Feedbin and
 others) are outside this harness.
 
 For repeatable real-account checks and new-provider onboarding, use the
@@ -25,7 +25,9 @@ The fake store separates providers and accounts, copies bytes at its boundaries,
 and gives Drive files stable identities. Dropbox reads return bytes and their
 revision together; writes enforce create-only or exact-revision conditions.
 iCloud saves are readable by the saving device immediately and remain hidden from
-peers until explicit propagation. This does not claim to
+peers until explicit propagation. The Folder double models a shared directory:
+uploads are immediately visible to every device, an absent file is a missing
+backup, and a revoked-access flag simulates a deleted or unwritable folder. This does not claim to
 implement the providers' complete consistency, authorization or conflict behavior.
 
 | Source set / target | What it runs |
@@ -120,7 +122,7 @@ cover replacement and preserving the last backup when an upload copy fails.
 `CloudSnapshotRegressions` pauses the upload before reading its file, changes a
 local article through the real repository, and verifies that the peer receives
 the captured snapshot while the sender keeps the newer edit. It runs for desktop
-and Android Dropbox/Drive and iOS Dropbox/iCloud. The iOS Drive adapter already
+and Android Dropbox/Drive/Folder and iOS Dropbox/iCloud. The iOS Drive adapter already
 passes materialized NSData to its SDK boundary; the synchronous desktop iCloud
 JNI transfer instead holds the database lifetime lock through its local copy.
 They also verify that a later edit remains pending when the earlier upload

@@ -7,9 +7,9 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSUUID
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
+import platform.Foundation.NSUUID
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfURL
 import platform.Foundation.getBytes

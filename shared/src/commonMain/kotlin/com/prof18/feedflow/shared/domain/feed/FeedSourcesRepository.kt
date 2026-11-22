@@ -483,7 +483,9 @@ internal class FeedSourcesRepository(
                 when (val outcome = guessLinkAndParseFeed(url)) {
                     is GuessOutcome.Found -> outcome.result
                     is GuessOutcome.HttpFailure -> return@withContext AddFeedResponse.FetchError(outcome.statusCode)
-                    is GuessOutcome.Challenge -> return@withContext AddFeedResponse.VerificationRequired(outcome.failure)
+                    is GuessOutcome.Challenge -> return@withContext AddFeedResponse.VerificationRequired(
+                        outcome.failure,
+                    )
                     GuessOutcome.NotFound -> return@withContext AddFeedResponse.NotRssFeed
                 }
             val rssChannel = addResult.channel

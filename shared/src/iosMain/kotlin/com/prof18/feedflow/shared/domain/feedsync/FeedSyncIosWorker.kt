@@ -262,7 +262,9 @@ internal class FeedSyncIosWorker(
         }
     }
 
-    private suspend fun emitErrorMessage() = feedSyncMessageQueue.emitResult(SyncResult.General(SyncUploadError.DropboxUploadFailed))
+    private suspend fun emitErrorMessage() = feedSyncMessageQueue.emitResult(
+        SyncResult.General(SyncUploadError.DropboxUploadFailed),
+    )
 
     private suspend fun emitSuccessMessage() = feedSyncMessageQueue.emitResult(SyncResult.Success)
 
