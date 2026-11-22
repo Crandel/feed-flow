@@ -86,6 +86,9 @@ data object BazquxSync : NavKey
 data object FeedbinSync : NavKey
 
 @Serializable
+data object FolderSync : NavKey
+
+@Serializable
 data class EditFeed(
     val id: String,
     val url: String,

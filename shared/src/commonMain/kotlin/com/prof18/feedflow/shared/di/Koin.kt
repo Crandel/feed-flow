@@ -19,6 +19,7 @@ import com.prof18.feedflow.database.DatabaseHelper
 import com.prof18.feedflow.feedsync.database.di.getFeedSyncModule
 import com.prof18.feedflow.feedsync.dropbox.di.dropboxModule
 import com.prof18.feedflow.feedsync.feedbin.di.getFeedbinModule
+import com.prof18.feedflow.feedsync.folder.di.folderModule
 import com.prof18.feedflow.feedsync.googledrive.di.googleDriveModule
 import com.prof18.feedflow.feedsync.greader.di.getGReaderModule
 import com.prof18.feedflow.feedsync.icloud.ICloudSettings
@@ -122,28 +123,27 @@ fun initKoin(
     crashReportingLogWriter: LogWriter,
     modules: List<Module>,
     platformSetup: KoinApplication.() -> Unit = {},
-): KoinApplication {
-    return startKoin {
+): KoinApplication =
+    startKoin {
         modules(getAllModulesModules(appConfig, crashReportingLogWriter, modules))
         platformSetup()
     }
-}
 
 internal fun getAllModulesModules(
     appConfig: AppConfig,
     crashReportingLogWriter: LogWriter,
     extraModules: List<Module> = emptyList(),
-): List<Module> {
-    return extraModules +
+): List<Module> =
+    extraModules +
         getCoreModule(appConfig) +
         dropboxModule +
         googleDriveModule(appConfig.appEnvironment) +
+        folderModule() +
         getGReaderModule(appConfig.appEnvironment) +
         getFeedbinModule(appConfig.appEnvironment) +
         getLoggingModule(appConfig, crashReportingLogWriter) +
         getPlatformModule(appConfig.appEnvironment) +
         getFeedSyncModule(appConfig.appEnvironment)
-}
 
 private fun getLoggingModule(
     appConfig: AppConfig,
@@ -155,19 +155,22 @@ private fun getLoggingModule(
             loggers.add(crashReportingLogWriter)
         }
 
-        val minSeverity = if (appConfig.appEnvironment.isRelease()) {
-            Severity.Info
-        } else {
-            Severity.Verbose
-        }
+        val minSeverity =
+            if (appConfig.appEnvironment.isRelease()) {
+                Severity.Info
+            } else {
+                Severity.Verbose
+            }
 
-        val baseLogger = Logger(
-            config = StaticConfig(
-                logWriterList = loggers,
-                minSeverity = minSeverity,
-            ),
-            tag = "FeedFlow",
-        )
+        val baseLogger =
+            Logger(
+                config =
+                StaticConfig(
+                    logWriterList = loggers,
+                    minSeverity = minSeverity,
+                ),
+                tag = "FeedFlow",
+            )
         factory {
             val tag = it.getOrNull<String>()
             if (tag != null) {
@@ -178,625 +181,628 @@ private fun getLoggingModule(
         }
     }
 
-private fun getCoreModule(appConfig: AppConfig) = module {
-    single { appConfig }
-    single<HttpClient>(named("article-report")) {
-        articleReportHttpClient(appConfig.appEnvironment, get())
-    } onClose { it?.close() }
-    single { ArticleReporter(get(named("article-report")), appConfig, get()) } onClose { it?.close() }
+private fun getCoreModule(appConfig: AppConfig) =
+    module {
+        single { appConfig }
+        single<HttpClient>(named("article-report")) {
+            articleReportHttpClient(appConfig.appEnvironment, get())
+        } onClose { it?.close() }
+        single { ArticleReporter(get(named("article-report")), appConfig, get()) } onClose { it?.close() }
 
-    single<Clock> { Clock.System }
+        single<Clock> { Clock.System }
 
-    single<DispatcherProvider> {
-        object : DispatcherProvider {
-            override val main: CoroutineDispatcher = Dispatchers.Main
-            override val default: CoroutineDispatcher = Dispatchers.Default
-            override val io: CoroutineDispatcher = Dispatchers.IO
+        single<DispatcherProvider> {
+            object : DispatcherProvider {
+                override val main: CoroutineDispatcher = Dispatchers.Main
+                override val default: CoroutineDispatcher = Dispatchers.Default
+                override val io: CoroutineDispatcher = Dispatchers.IO
+            }
+        }
+
+        single { LiveQueryGate() }
+
+        single {
+            DatabaseHelper(
+                sqlDriver = get(),
+                backgroundDispatcher = Dispatchers.IO.limitedParallelism(1),
+                logger = getWith("DatabaseHelper"),
+                liveQueryGate = get(),
+            )
+        }
+
+        single { ArticleNotificationRepository(databaseHelper = get()) }
+
+        factory {
+            UserFeedbackReporter(
+                appConfig = appConfig,
+                accountsRepository = get(),
+            )
+        }
+
+        single {
+            FeedActionsRepository(
+                databaseHelper = get(),
+                feedSyncRepository = get(),
+                gReaderRepository = get(),
+                feedbinRepository = get(),
+                accountsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+                feedStateRepository = get(),
+                readerContentFetcher = get(),
+                feedItemContentFileHandler = get(),
+            )
+        }
+
+        single<ArticleContentParser> {
+            KleadArticleContentParser(
+                contentFormat = readerContentFormat,
+                htmlRetriever = get(),
+                logger = getWith("KleadArticleContentParser"),
+            )
+        }
+
+        factory<HtmlParser> {
+            KsoupHtmlParser(
+                logger = getWith("KsoupHtmlParser"),
+            )
+        }
+
+        factory {
+            ReaderContentFetcher(
+                articleContentParser = get(),
+                feedItemContentFileHandler = get(),
+                htmlRetriever = get(),
+                recoveryRepository = get(),
+                coordinator = get(),
+                sessionHttp = getOrNull(),
+                dateFormatter = get(),
+            )
+        }
+
+        factory {
+            ReaderContentCacheMigration(
+                settingsRepository = get(),
+                feedItemContentFileHandler = get(),
+                logger = getWith("ReaderContentCacheMigration"),
+            )
+        }
+
+        single {
+            ContentPrefetcher(
+                logger = getWith("ContentPrefetcher"),
+                databaseHelper = get(),
+                readerContentFetcher = get(),
+            )
+        }
+
+        single<ContentPrefetchRepository> {
+            ContentPrefetchRepositoryImpl(
+                logger = getWith("ContentPrefetchRepository"),
+                settingsRepository = get(),
+                databaseHelper = get(),
+                contentPrefetcher = get(),
+                backgroundPrefetchScheduler = get(),
+            )
+        }
+
+        single {
+            PendingReadStatusActionRetrier(
+                feedActionsRepository = get(),
+            )
+        }
+
+        single<DateFormatter> {
+            DateFormatterImpl(
+                logger = getWith("DateFormatter"),
+                clock = get(),
+            )
+        }
+
+        single {
+            val dateFormatter = get<DateFormatter>()
+            FeedHttpCacheStore(
+                currentTimeMillis = dateFormatter::currentTimeMillis,
+                logger = getWith("FeedHttpCacheStore"),
+            )
+        }
+
+        viewModel {
+            HomeViewModel(
+                feedActionsRepository = get(),
+                feedSourcesRepository = get(),
+                settingsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+                feedSyncRepository = get(),
+                feedFontSizeRepository = get(),
+                feedCategoryRepository = get(),
+                feedStateRepository = get(),
+                feedFetcherRepository = get(),
+                getNextFeedFilterOrNullUseCase = get(),
+                readerContentCacheMigration = get(),
+            )
+        }
+
+        viewModel {
+            AddFeedViewModel(
+                feedSourcesRepository = get(),
+                categoryRepository = get(),
+                feedStateRepository = get(),
+                recoveryService = get(),
+                recoveryRepository = get(),
+                coordinator = get(),
+                notificationRefreshEnabler = get(),
+            )
+        }
+
+        // Undo and the closing backup must finish after the screen, and its ViewModel on iOS, goes away.
+        single(named(FEED_SUGGESTIONS_SCOPE)) {
+            CoroutineScope(SupervisorJob() + get<DispatcherProvider>().main)
+        } onClose { it?.cancel() }
+
+        viewModel {
+            FeedSuggestionsViewModel(
+                feedSourcesRepository = get(),
+                feedFetcherRepository = get(),
+                backgroundScope = get(named(FEED_SUGGESTIONS_SCOPE)),
+            )
+        }
+
+        viewModel {
+            FeedSourceListViewModel(
+                feedSourcesRepository = get(),
+                feedCategoryRepository = get(),
+                feedStateRepository = get(),
+                settingsRepository = get(),
+                recoveryRepository = get(),
+                recoveryService = get(),
+                coordinator = get(),
+                profileCleaner = getOrNull(),
+            )
+        }
+
+        viewModel {
+            FeedRefreshVerificationViewModel(
+                feedSourcesRepository = get(),
+                recoveryRepository = get(),
+                coordinator = get(),
+                recoveryService = get(),
+                databaseHelper = get(),
+                dateFormatter = get(),
+            )
+        }
+
+        single {
+            SettingsRepository(
+                settings = get(),
+            )
+        }
+
+        single { AudioPlaybackPositionRepository(settings = get()) }
+
+        single {
+            FeedAppearanceSettingsRepository(
+                settings = get(),
+            )
+        }
+
+        factory {
+            ReviewRepository(
+                settings = get(),
+                databaseHelper = get(),
+                appConfig = appConfig,
+            )
+        }
+
+        viewModel {
+            ImportExportViewModel(
+                feedImportExportRepository = get(),
+                feedStateRepository = get(),
+                logger = getWith("ImportExportViewModel"),
+                dateFormatter = get(),
+            )
+        }
+
+        factory {
+            RssChannelMapper(
+                dateFormatter = get(),
+                htmlParser = get(),
+                logger = getWith("RssChannelMapper"),
+            )
+        }
+
+        factory<FeedSourceLogoRetriever> {
+            FeedSourceLogoRetrieverImpl(
+                htmlRetriever = get(),
+                htmlParser = get(),
+            )
+        }
+
+        viewModel {
+            MainSettingsViewModel(
+                settingsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+            )
+        }
+
+        viewModel {
+            ExtrasSettingsViewModel(
+                settingsRepository = get(),
+            )
+        }
+
+        viewModel {
+            MenuBarViewModel(
+                settingsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+                feedStateRepository = get(),
+                contentPrefetchRepository = get(),
+                feedItemContentFileHandler = get(),
+                backgroundSyncScheduler = get(),
+            )
+        }
+
+        viewModel {
+            FeedListSettingsViewModel(
+                feedAppearanceSettingsRepository = get(),
+                fontSizeRepository = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            ReadingBehaviorSettingsViewModel(
+                settingsRepository = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            SyncAndStorageSettingsViewModel(
+                settingsRepository = get(),
+                feedItemContentFileHandler = get(),
+                backgroundSyncScheduler = get(),
+            )
+        }
+
+        viewModel {
+            AboutAndSupportSettingsViewModel(
+                settingsRepository = get(),
+            )
+        }
+
+        viewModel {
+            ReviewViewModel(
+                reviewRepository = get(),
+            )
+        }
+
+        viewModel {
+            SearchViewModel(
+                feedActionsRepository = get(),
+                dateFormatter = get(),
+                feedAppearanceSettingsRepository = get(),
+                feedFontSizeRepository = get(),
+                feedStateRepository = get(),
+                articleNavigationRepository = get(),
+            )
+        }
+
+        viewModel {
+            BlockedWordsViewModel(
+                databaseHelper = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            ReaderModeViewModel(
+                settingsRepository = get(),
+                feedActionsRepository = get(),
+                articleContentParser = get(),
+                readerContentFetcher = get(),
+                feedItemContentFileHandler = get(),
+                articleNavigationRepository = get(),
+                databaseHelper = get(),
+                articleReporter = get(),
+                recoveryRepository = get(),
+                coordinator = get(),
+            )
+        }
+
+        single { ReaderSpeechText(dispatcherProvider = get()) }
+
+        factory {
+            FeedUrlRetriever(
+                htmlParser = get(),
+                htmlRetriever = get(),
+            )
+        }
+
+        single {
+            HtmlRetriever(
+                logger = getWith("HtmlRetriever"),
+                client = createHtmlRetrieverClient(FEEDFLOW_USER_AGENT),
+                forbiddenFallbackClient = createHtmlRetrieverClient(FEEDFLOW_READER_FALLBACK_USER_AGENT),
+            )
+        }
+
+        single {
+            FeedSyncRepository(
+                syncedDatabaseHelper = get(),
+                feedSyncWorker = get(),
+                feedSyncAccountRepository = get(),
+                feedSyncMessageQueue = get(),
+                dropboxSettings = get(),
+                logger = getWith("FeedSyncRepository"),
+                pendingCloudChanges = get(),
+                settingsRepository = get(),
+            )
+        }
+
+        singleOf(::PendingCloudChangesManager)
+
+        factory {
+            FeedSyncer(
+                syncedDatabaseHelper = get(),
+                appDatabaseHelper = get(),
+                logger = getWith("FeedSyncer"),
+                pendingCloudChanges = get(),
+            )
+        }
+
+        viewModel {
+            AccountsViewModel(
+                accountsRepository = get(),
+            )
+        }
+
+        singleOf(::FeedSyncMessageQueue)
+
+        single {
+            AccountsRepository(
+                currentOS = get(),
+                dropboxSettings = get(),
+                googleDriveSettings = get(),
+                folderSettings = get(),
+                icloudSettings = get(),
+                appConfig = appConfig,
+                gReaderRepository = get(),
+                networkSettings = get(),
+                feedbinRepository = get(),
+                databaseHelper = get(),
+                settingsRepository = get(),
+            )
+        }
+
+        factoryOf(::FeedCategoryRepository)
+
+        factory {
+            ICloudSettings(
+                settings = get(),
+            )
+        }
+
+        viewModel {
+            EditFeedViewModel(
+                categoryUseCase = get(),
+                feedSourcesRepository = get(),
+                accountsRepository = get(),
+                databaseHelper = get(),
+                feedStateRepository = get(),
+                recoveryService = get(),
+                recoveryRepository = get(),
+                coordinator = get(),
+                notificationRefreshEnabler = get(),
+                settingsRepository = get(),
+            )
+        }
+
+        viewModel {
+            ChangeFeedCategoryViewModel(
+                categoryRepository = get(),
+                feedSourcesRepository = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        singleOf(::FeedFontSizeRepository)
+
+        viewModel {
+            FreshRssSyncViewModel(
+                gReaderRepository = get(),
+                accountsRepository = get(),
+                dateFormatter = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            MinifluxSyncViewModel(
+                gReaderRepository = get(),
+                accountsRepository = get(),
+                dateFormatter = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            BazquxSyncViewModel(
+                gReaderRepository = get(),
+                accountsRepository = get(),
+                dateFormatter = get(),
+                feedStateRepository = get(),
+            )
+        }
+
+        viewModel {
+            FeedbinSyncViewModel(
+                feedbinRepository = get(),
+                accountsRepository = get(),
+                dateFormatter = get(),
+                feedStateRepository = get(),
+                feedbinHistorySyncScheduler = get(),
+            )
+        }
+
+        factory {
+            FeedImportExportRepository(
+                dispatcherProvider = get(),
+                feedSyncRepository = get(),
+                accountsRepository = get(),
+                gReaderRepository = get(),
+                feedbinRepository = get(),
+                databaseHelper = get(),
+                opmlFeedHandler = get(),
+            )
+        }
+
+        factory {
+            FeedSourcesRepository(
+                databaseHelper = get(),
+                accountsRepository = get(),
+                feedSyncRepository = get(),
+                gReaderRepository = get(),
+                feedbinRepository = get(),
+                dispatcherProvider = get(),
+                logger = getWith("FeedSourcesRepository"),
+                feedStateRepository = get(),
+                feedUrlRetriever = get(),
+                feedSourceLogoRetriever = get(),
+                rssParserWrapper = get(),
+                dateFormatter = get(),
+                rssChannelMapper = get(),
+                settingsRepository = get(),
+                recoveryRepository = get(),
+            )
+        }
+
+        single {
+            ArticleNavigationRepository(feedStateRepository = get())
+        }
+
+        single {
+            FeedRecoveryRepository(
+                databaseHelper = get(),
+                settingsRepository = get(),
+                supported = getOrNull<WebsiteSessionHttp>() != null,
+            )
+        }
+
+        single { FeedRecoveryCoordinator(available = getOrNull<WebsiteSessionHttp>() != null) }
+
+        single {
+            FeedRecoveryService(
+                coordinator = get(),
+                recoveryRepository = get(),
+                capturedFeedParser = getOrNull(),
+                rssChannelMapper = get(),
+                feedSourceLogoRetriever = get(),
+                databaseHelper = get(),
+                feedSyncRepository = get(),
+                feedStateRepository = get(),
+                accountsRepository = get(),
+                dateFormatter = get(),
+                logger = getWith("FeedRecoveryService"),
+            )
+        }
+
+        single {
+            FeedAttempt(
+                rssParserWrapper = get(),
+                recoveryRepository = get(),
+                sessionHttp = getOrNull(),
+                capturedFeedParser = getOrNull(),
+            )
+        }
+
+        single {
+            FeedStateRepository(
+                databaseHelper = get(),
+                settingsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+                dateFormatter = get(),
+                logger = getWith("FeedStateRepository"),
+            )
+        }
+
+        single {
+            E2eSeedRunner(
+                databaseHelper = get(),
+                settingsRepository = get(),
+                feedAppearanceSettingsRepository = get(),
+                feedItemContentFileHandler = get(),
+                accountsRepository = get(),
+                feedSyncRepository = get(),
+                feedStateRepository = get(),
+                dropboxSettings = get(),
+                googleDriveSettings = get(),
+                folderSettings = get(),
+                icloudSettings = get(),
+                networkSettings = get(),
+                audioPositions = get(),
+                appEnvironment = appConfig.appEnvironment,
+                settings = get(),
+                readerContentFormat = readerContentFormat,
+            )
+        }
+
+        factory {
+            FeedFetcherRepository(
+                dispatcherProvider = get(),
+                feedStateRepository = get(),
+                gReaderRepository = get(),
+                feedbinRepository = get(),
+                databaseHelper = get(),
+                feedSyncRepository = get(),
+                settingsRepository = get(),
+                logger = getWith("FeedFetcherRepository"),
+                rssChannelMapper = get(),
+                dateFormatter = get(),
+                feedSourceLogoRetriever = get(),
+                contentPrefetchRepository = get(),
+                feedHttpCacheStore = get(),
+                feedAttempt = get(),
+                recoveryRepository = get(),
+            )
+        }
+
+        factory {
+            FeedWidgetRepository(
+                databaseHelper = get(),
+                dateFormatter = get(),
+                feedAppearanceSettingsRepository = get(),
+            )
+        }
+
+        viewModel {
+            DeeplinkFeedViewModel(
+                widgetRepository = get(),
+                feedActionsRepository = get(),
+            )
+        }
+
+        factory {
+            NotificationRefreshEnabler(
+                settingsRepository = get(),
+                backgroundSyncScheduler = get(),
+            )
+        }
+
+        viewModel {
+            NotificationsViewModel(
+                databaseHelper = get(),
+                settingsRepository = get(),
+                notificationRefreshEnabler = get(),
+                backgroundSyncScheduler = get(),
+            )
+        }
+
+        single {
+            GetNextFeedFilterOrNullUseCase(
+                feedSourcesRepository = get(),
+            )
         }
     }
-
-    single { LiveQueryGate() }
-
-    single {
-        DatabaseHelper(
-            sqlDriver = get(),
-            backgroundDispatcher = Dispatchers.IO.limitedParallelism(1),
-            logger = getWith("DatabaseHelper"),
-            liveQueryGate = get(),
-        )
-    }
-
-    single { ArticleNotificationRepository(databaseHelper = get()) }
-
-    factory {
-        UserFeedbackReporter(
-            appConfig = appConfig,
-            accountsRepository = get(),
-        )
-    }
-
-    single {
-        FeedActionsRepository(
-            databaseHelper = get(),
-            feedSyncRepository = get(),
-            gReaderRepository = get(),
-            feedbinRepository = get(),
-            accountsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-            feedStateRepository = get(),
-            readerContentFetcher = get(),
-            feedItemContentFileHandler = get(),
-        )
-    }
-
-    single<ArticleContentParser> {
-        KleadArticleContentParser(
-            contentFormat = readerContentFormat,
-            htmlRetriever = get(),
-            logger = getWith("KleadArticleContentParser"),
-        )
-    }
-
-    factory<HtmlParser> {
-        KsoupHtmlParser(
-            logger = getWith("KsoupHtmlParser"),
-        )
-    }
-
-    factory {
-        ReaderContentFetcher(
-            articleContentParser = get(),
-            feedItemContentFileHandler = get(),
-            htmlRetriever = get(),
-            recoveryRepository = get(),
-            coordinator = get(),
-            sessionHttp = getOrNull(),
-            dateFormatter = get(),
-        )
-    }
-
-    factory {
-        ReaderContentCacheMigration(
-            settingsRepository = get(),
-            feedItemContentFileHandler = get(),
-            logger = getWith("ReaderContentCacheMigration"),
-        )
-    }
-
-    single {
-        ContentPrefetcher(
-            logger = getWith("ContentPrefetcher"),
-            databaseHelper = get(),
-            readerContentFetcher = get(),
-        )
-    }
-
-    single<ContentPrefetchRepository> {
-        ContentPrefetchRepositoryImpl(
-            logger = getWith("ContentPrefetchRepository"),
-            settingsRepository = get(),
-            databaseHelper = get(),
-            contentPrefetcher = get(),
-            backgroundPrefetchScheduler = get(),
-        )
-    }
-
-    single {
-        PendingReadStatusActionRetrier(
-            feedActionsRepository = get(),
-        )
-    }
-
-    single<DateFormatter> {
-        DateFormatterImpl(
-            logger = getWith("DateFormatter"),
-            clock = get(),
-        )
-    }
-
-    single {
-        val dateFormatter = get<DateFormatter>()
-        FeedHttpCacheStore(
-            currentTimeMillis = dateFormatter::currentTimeMillis,
-            logger = getWith("FeedHttpCacheStore"),
-        )
-    }
-
-    viewModel {
-        HomeViewModel(
-            feedActionsRepository = get(),
-            feedSourcesRepository = get(),
-            settingsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-            feedSyncRepository = get(),
-            feedFontSizeRepository = get(),
-            feedCategoryRepository = get(),
-            feedStateRepository = get(),
-            feedFetcherRepository = get(),
-            getNextFeedFilterOrNullUseCase = get(),
-            readerContentCacheMigration = get(),
-        )
-    }
-
-    viewModel {
-        AddFeedViewModel(
-            feedSourcesRepository = get(),
-            categoryRepository = get(),
-            feedStateRepository = get(),
-            recoveryService = get(),
-            recoveryRepository = get(),
-            coordinator = get(),
-            notificationRefreshEnabler = get(),
-        )
-    }
-
-    // Undo and the closing backup must finish after the screen, and its ViewModel on iOS, goes away.
-    single(named(FEED_SUGGESTIONS_SCOPE)) {
-        CoroutineScope(SupervisorJob() + get<DispatcherProvider>().main)
-    } onClose { it?.cancel() }
-
-    viewModel {
-        FeedSuggestionsViewModel(
-            feedSourcesRepository = get(),
-            feedFetcherRepository = get(),
-            backgroundScope = get(named(FEED_SUGGESTIONS_SCOPE)),
-        )
-    }
-
-    viewModel {
-        FeedSourceListViewModel(
-            feedSourcesRepository = get(),
-            feedCategoryRepository = get(),
-            feedStateRepository = get(),
-            settingsRepository = get(),
-            recoveryRepository = get(),
-            recoveryService = get(),
-            coordinator = get(),
-            profileCleaner = getOrNull(),
-        )
-    }
-
-    viewModel {
-        FeedRefreshVerificationViewModel(
-            feedSourcesRepository = get(),
-            recoveryRepository = get(),
-            coordinator = get(),
-            recoveryService = get(),
-            databaseHelper = get(),
-            dateFormatter = get(),
-        )
-    }
-
-    single {
-        SettingsRepository(
-            settings = get(),
-        )
-    }
-
-    single { AudioPlaybackPositionRepository(settings = get()) }
-
-    single {
-        FeedAppearanceSettingsRepository(
-            settings = get(),
-        )
-    }
-
-    factory {
-        ReviewRepository(
-            settings = get(),
-            databaseHelper = get(),
-            appConfig = appConfig,
-        )
-    }
-
-    viewModel {
-        ImportExportViewModel(
-            feedImportExportRepository = get(),
-            feedStateRepository = get(),
-            logger = getWith("ImportExportViewModel"),
-            dateFormatter = get(),
-        )
-    }
-
-    factory {
-        RssChannelMapper(
-            dateFormatter = get(),
-            htmlParser = get(),
-            logger = getWith("RssChannelMapper"),
-        )
-    }
-
-    factory<FeedSourceLogoRetriever> {
-        FeedSourceLogoRetrieverImpl(
-            htmlRetriever = get(),
-            htmlParser = get(),
-        )
-    }
-
-    viewModel {
-        MainSettingsViewModel(
-            settingsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-        )
-    }
-
-    viewModel {
-        ExtrasSettingsViewModel(
-            settingsRepository = get(),
-        )
-    }
-
-    viewModel {
-        MenuBarViewModel(
-            settingsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-            feedStateRepository = get(),
-            contentPrefetchRepository = get(),
-            feedItemContentFileHandler = get(),
-            backgroundSyncScheduler = get(),
-        )
-    }
-
-    viewModel {
-        FeedListSettingsViewModel(
-            feedAppearanceSettingsRepository = get(),
-            fontSizeRepository = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        ReadingBehaviorSettingsViewModel(
-            settingsRepository = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        SyncAndStorageSettingsViewModel(
-            settingsRepository = get(),
-            feedItemContentFileHandler = get(),
-            backgroundSyncScheduler = get(),
-        )
-    }
-
-    viewModel {
-        AboutAndSupportSettingsViewModel(
-            settingsRepository = get(),
-        )
-    }
-
-    viewModel {
-        ReviewViewModel(
-            reviewRepository = get(),
-        )
-    }
-
-    viewModel {
-        SearchViewModel(
-            feedActionsRepository = get(),
-            dateFormatter = get(),
-            feedAppearanceSettingsRepository = get(),
-            feedFontSizeRepository = get(),
-            feedStateRepository = get(),
-            articleNavigationRepository = get(),
-        )
-    }
-
-    viewModel {
-        BlockedWordsViewModel(
-            databaseHelper = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        ReaderModeViewModel(
-            settingsRepository = get(),
-            feedActionsRepository = get(),
-            articleContentParser = get(),
-            readerContentFetcher = get(),
-            feedItemContentFileHandler = get(),
-            articleNavigationRepository = get(),
-            databaseHelper = get(),
-            articleReporter = get(),
-            recoveryRepository = get(),
-            coordinator = get(),
-        )
-    }
-
-    single { ReaderSpeechText(dispatcherProvider = get()) }
-
-    factory {
-        FeedUrlRetriever(
-            htmlParser = get(),
-            htmlRetriever = get(),
-        )
-    }
-
-    single {
-        HtmlRetriever(
-            logger = getWith("HtmlRetriever"),
-            client = createHtmlRetrieverClient(FEEDFLOW_USER_AGENT),
-            forbiddenFallbackClient = createHtmlRetrieverClient(FEEDFLOW_READER_FALLBACK_USER_AGENT),
-        )
-    }
-
-    single {
-        FeedSyncRepository(
-            syncedDatabaseHelper = get(),
-            feedSyncWorker = get(),
-            feedSyncAccountRepository = get(),
-            feedSyncMessageQueue = get(),
-            dropboxSettings = get(),
-            logger = getWith("FeedSyncRepository"),
-            pendingCloudChanges = get(),
-            settingsRepository = get(),
-        )
-    }
-
-    singleOf(::PendingCloudChangesManager)
-
-    factory {
-        FeedSyncer(
-            syncedDatabaseHelper = get(),
-            appDatabaseHelper = get(),
-            logger = getWith("FeedSyncer"),
-            pendingCloudChanges = get(),
-        )
-    }
-
-    viewModel {
-        AccountsViewModel(
-            accountsRepository = get(),
-        )
-    }
-
-    singleOf(::FeedSyncMessageQueue)
-
-    single {
-        AccountsRepository(
-            currentOS = get(),
-            dropboxSettings = get(),
-            googleDriveSettings = get(),
-            icloudSettings = get(),
-            appConfig = appConfig,
-            gReaderRepository = get(),
-            networkSettings = get(),
-            feedbinRepository = get(),
-            databaseHelper = get(),
-            settingsRepository = get(),
-        )
-    }
-
-    factoryOf(::FeedCategoryRepository)
-
-    factory {
-        ICloudSettings(
-            settings = get(),
-        )
-    }
-
-    viewModel {
-        EditFeedViewModel(
-            categoryUseCase = get(),
-            feedSourcesRepository = get(),
-            accountsRepository = get(),
-            databaseHelper = get(),
-            feedStateRepository = get(),
-            recoveryService = get(),
-            recoveryRepository = get(),
-            coordinator = get(),
-            notificationRefreshEnabler = get(),
-            settingsRepository = get(),
-        )
-    }
-
-    viewModel {
-        ChangeFeedCategoryViewModel(
-            categoryRepository = get(),
-            feedSourcesRepository = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    singleOf(::FeedFontSizeRepository)
-
-    viewModel {
-        FreshRssSyncViewModel(
-            gReaderRepository = get(),
-            accountsRepository = get(),
-            dateFormatter = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        MinifluxSyncViewModel(
-            gReaderRepository = get(),
-            accountsRepository = get(),
-            dateFormatter = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        BazquxSyncViewModel(
-            gReaderRepository = get(),
-            accountsRepository = get(),
-            dateFormatter = get(),
-            feedStateRepository = get(),
-        )
-    }
-
-    viewModel {
-        FeedbinSyncViewModel(
-            feedbinRepository = get(),
-            accountsRepository = get(),
-            dateFormatter = get(),
-            feedStateRepository = get(),
-            feedbinHistorySyncScheduler = get(),
-        )
-    }
-
-    factory {
-        FeedImportExportRepository(
-            dispatcherProvider = get(),
-            feedSyncRepository = get(),
-            accountsRepository = get(),
-            gReaderRepository = get(),
-            feedbinRepository = get(),
-            databaseHelper = get(),
-            opmlFeedHandler = get(),
-        )
-    }
-
-    factory {
-        FeedSourcesRepository(
-            databaseHelper = get(),
-            accountsRepository = get(),
-            feedSyncRepository = get(),
-            gReaderRepository = get(),
-            feedbinRepository = get(),
-            dispatcherProvider = get(),
-            logger = getWith("FeedSourcesRepository"),
-            feedStateRepository = get(),
-            feedUrlRetriever = get(),
-            feedSourceLogoRetriever = get(),
-            rssParserWrapper = get(),
-            dateFormatter = get(),
-            rssChannelMapper = get(),
-            settingsRepository = get(),
-            recoveryRepository = get(),
-        )
-    }
-
-    single {
-        ArticleNavigationRepository(feedStateRepository = get())
-    }
-
-    single {
-        FeedRecoveryRepository(
-            databaseHelper = get(),
-            settingsRepository = get(),
-            supported = getOrNull<WebsiteSessionHttp>() != null,
-        )
-    }
-
-    single { FeedRecoveryCoordinator(available = getOrNull<WebsiteSessionHttp>() != null) }
-
-    single {
-        FeedRecoveryService(
-            coordinator = get(),
-            recoveryRepository = get(),
-            capturedFeedParser = getOrNull(),
-            rssChannelMapper = get(),
-            feedSourceLogoRetriever = get(),
-            databaseHelper = get(),
-            feedSyncRepository = get(),
-            feedStateRepository = get(),
-            accountsRepository = get(),
-            dateFormatter = get(),
-            logger = getWith("FeedRecoveryService"),
-        )
-    }
-
-    single {
-        FeedAttempt(
-            rssParserWrapper = get(),
-            recoveryRepository = get(),
-            sessionHttp = getOrNull(),
-            capturedFeedParser = getOrNull(),
-        )
-    }
-
-    single {
-        FeedStateRepository(
-            databaseHelper = get(),
-            settingsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-            dateFormatter = get(),
-            logger = getWith("FeedStateRepository"),
-        )
-    }
-
-    single {
-        E2eSeedRunner(
-            databaseHelper = get(),
-            settingsRepository = get(),
-            feedAppearanceSettingsRepository = get(),
-            feedItemContentFileHandler = get(),
-            accountsRepository = get(),
-            feedSyncRepository = get(),
-            feedStateRepository = get(),
-            dropboxSettings = get(),
-            googleDriveSettings = get(),
-            icloudSettings = get(),
-            networkSettings = get(),
-            audioPositions = get(),
-            appEnvironment = appConfig.appEnvironment,
-            settings = get(),
-            readerContentFormat = readerContentFormat,
-        )
-    }
-
-    factory {
-        FeedFetcherRepository(
-            dispatcherProvider = get(),
-            feedStateRepository = get(),
-            gReaderRepository = get(),
-            feedbinRepository = get(),
-            databaseHelper = get(),
-            feedSyncRepository = get(),
-            settingsRepository = get(),
-            logger = getWith("FeedFetcherRepository"),
-            rssChannelMapper = get(),
-            dateFormatter = get(),
-            feedSourceLogoRetriever = get(),
-            contentPrefetchRepository = get(),
-            feedHttpCacheStore = get(),
-            feedAttempt = get(),
-            recoveryRepository = get(),
-        )
-    }
-
-    factory {
-        FeedWidgetRepository(
-            databaseHelper = get(),
-            dateFormatter = get(),
-            feedAppearanceSettingsRepository = get(),
-        )
-    }
-
-    viewModel {
-        DeeplinkFeedViewModel(
-            widgetRepository = get(),
-            feedActionsRepository = get(),
-        )
-    }
-
-    factory {
-        NotificationRefreshEnabler(
-            settingsRepository = get(),
-            backgroundSyncScheduler = get(),
-        )
-    }
-
-    viewModel {
-        NotificationsViewModel(
-            databaseHelper = get(),
-            settingsRepository = get(),
-            notificationRefreshEnabler = get(),
-            backgroundSyncScheduler = get(),
-        )
-    }
-
-    single {
-        GetNextFeedFilterOrNullUseCase(
-            feedSourcesRepository = get(),
-        )
-    }
-}
 
 private fun createHtmlRetrieverClient(userAgent: String): HttpClient =
     HttpClient {
@@ -838,8 +844,6 @@ internal expect fun platformLogWriters(): List<LogWriter>
 
 internal expect fun getPlatformModule(appEnvironment: AppEnvironment): Module
 
-inline fun <reified T> Scope.getWith(vararg params: Any?): T {
-    return get(parameters = { parametersOf(*params) })
-}
+inline fun <reified T> Scope.getWith(vararg params: Any?): T = get(parameters = { parametersOf(*params) })
 
 private const val FEED_SUGGESTIONS_SCOPE = "feedSuggestionsScope"

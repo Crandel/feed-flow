@@ -80,7 +80,9 @@ internal suspend fun runCloudArtifactExchange(provider: CloudProvider): CloudArt
         return produceCloudArtifact(config, provider, config.artifactPath(provider), config.manifestPath(provider))
     }
     val producers = config.producerPlatforms.filter {
-        it != config.platform && (provider != CloudProvider.ICLOUD || it != "android")
+        it != config.platform &&
+            (provider != CloudProvider.ICLOUD || it != "android") &&
+            (provider != CloudProvider.FOLDER || it != "ios")
     }
     require(producers.isNotEmpty()) { "No supported producer platforms configured for $provider" }
     producers.forEach { producer ->

@@ -5,6 +5,8 @@ import com.prof18.feedflow.feedsync.dropbox.DropboxDownloadParam
 import com.prof18.feedflow.feedsync.dropbox.DropboxDownloadResult
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadParam
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadResult
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.AuthorizationValidationResult
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceAndroid
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadParam
@@ -13,6 +15,7 @@ import com.prof18.feedflow.feedsync.googledrive.GoogleDriveSettings
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveUploadParam
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveUploadResult
 import com.prof18.feedflow.shared.test.DropboxDataSourceFake
+import java.io.File
 
 internal class AndroidDropboxTransport(
     private val store: CloudStore,
@@ -70,6 +73,43 @@ internal class AndroidDriveTransport(
         }
         settings.setBackupFileId(store.snapshot().single().fileId)
         return GoogleDriveDownloadResult()
+    }
+}
+
+internal class AndroidFolderTransport(
+    private val store: CloudStore,
+    private val device: String,
+) : FolderSyncDataSource {
+    var accessible = true
+    override fun isLinked(): Boolean = true
+
+    override suspend fun checkAccess() {
+        ensureAccessible()
+    }
+
+    override suspend fun upload(
+        source: String,
+        fileName: String,
+    ) {
+        ensureAccessible()
+        store.beforeUploadRead()
+        store.upload(CloudProvider.FOLDER, ACCOUNT, fileName, File(source).readBytes(), device)
+    }
+
+    override suspend fun download(
+        fileName: String,
+        destination: String,
+    ) {
+        ensureAccessible()
+        File(destination).writeBytes(store.download(CloudProvider.FOLDER, ACCOUNT, fileName))
+    }
+
+    override fun releaseAccess() {
+        accessible = false
+    }
+
+    private fun ensureAccessible() {
+        if (!accessible) throw FolderNotAccessibleException()
     }
 }
 

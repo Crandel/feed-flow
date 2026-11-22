@@ -16,6 +16,7 @@ plugins {
 
 @Suppress("UNCHECKED_CAST")
 val appVersionCode = extra["appVersionCode"] as () -> Int
+
 @Suppress("UNCHECKED_CAST")
 val appVersionName = extra["appVersionName"] as () -> String
 
@@ -176,7 +177,7 @@ dependencies {
     implementation(libs.compose.unstyled.slider)
     implementation(libs.androidx.profileinstaller)
     "baselineProfile"(project(":benchmarks"))
- 
+
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.compose.material3)
@@ -184,7 +185,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3.adaptive.navigationsuite)
- 
+
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewModel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

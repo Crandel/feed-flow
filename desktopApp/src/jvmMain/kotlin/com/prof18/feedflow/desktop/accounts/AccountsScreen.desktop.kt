@@ -10,6 +10,7 @@ import com.prof18.feedflow.core.model.SyncAccounts
 import com.prof18.feedflow.desktop.accounts.bazqux.BazquxSyncScreen
 import com.prof18.feedflow.desktop.accounts.dropbox.DropboxSyncScreen
 import com.prof18.feedflow.desktop.accounts.feedbin.FeedbinSyncScreen
+import com.prof18.feedflow.desktop.accounts.folder.FolderSyncScreen
 import com.prof18.feedflow.desktop.accounts.freshrss.FreshRssSyncScreen
 import com.prof18.feedflow.desktop.accounts.googledrive.GoogleDriveSyncScreen
 import com.prof18.feedflow.desktop.accounts.icloud.ICloudSyncScreen
@@ -41,7 +42,10 @@ internal fun AccountsScreen(
 }
 
 @Composable
-private fun DesktopAccountDetail(account: SyncAccounts, credentials: CredentialsState) {
+private fun DesktopAccountDetail(
+    account: SyncAccounts,
+    credentials: CredentialsState,
+) {
     when (account) {
         SyncAccounts.DROPBOX -> DropboxSyncScreen(credentials)
         SyncAccounts.GOOGLE_DRIVE -> GoogleDriveSyncScreen(credentials)
@@ -50,6 +54,7 @@ private fun DesktopAccountDetail(account: SyncAccounts, credentials: Credentials
         SyncAccounts.MINIFLUX -> MinifluxSyncScreen(credentials)
         SyncAccounts.BAZQUX -> BazquxSyncScreen(credentials)
         SyncAccounts.FEEDBIN -> FeedbinSyncScreen(credentials)
+        SyncAccounts.FOLDER -> FolderSyncScreen(credentials)
         SyncAccounts.LOCAL -> Unit
     }
 }

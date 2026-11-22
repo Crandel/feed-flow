@@ -59,4 +59,21 @@ class DesktopCloudSyncSuccessTest : KoinTestBase() {
         runCloudFeedAndCategoryDeletionRegressions(CloudProvider.ICLOUD)
         runCloudFeedAndCategoryStaleBackupRegressions(CloudProvider.ICLOUD)
     }
+
+    @Test
+    fun `Folder successful workflows use real desktop worker and database files`() = runTest(testDispatcher) {
+        CloudSuccessScenario.entries.forEach { runCloudSuccessScenario(CloudProvider.FOLDER, it) }
+        runQueuedCloudSuccess(CloudProvider.FOLDER)
+        runCloudFlagRegressions(CloudProvider.FOLDER)
+        runStaleCloudRefreshRegression(CloudProvider.FOLDER)
+        runCloudTransferRegressions(CloudProvider.FOLDER)
+        runCloudInvalidSnapshotRegressions(CloudProvider.FOLDER)
+        runCloudUpgradeRegressions(CloudProvider.FOLDER)
+        runCloudPendingRegressions(CloudProvider.FOLDER)
+        runCloudFeedAndCategoryRegressions(CloudProvider.FOLDER)
+        runCloudFeedAndCategoryAccountGuardRegressions(CloudProvider.FOLDER)
+        runCloudFeedAndCategoryDeletionRegressions(CloudProvider.FOLDER)
+        runCloudFeedAndCategoryStaleBackupRegressions(CloudProvider.FOLDER)
+        runCloudSnapshotRegression(CloudProvider.FOLDER)
+    }
 }

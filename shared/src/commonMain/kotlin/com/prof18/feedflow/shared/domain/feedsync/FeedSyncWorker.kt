@@ -25,7 +25,11 @@ internal interface FeedSyncWorker {
 internal fun syncDownloadErrorForAccount(account: SyncAccounts): SyncDownloadError =
     when (account) {
         SyncAccounts.GOOGLE_DRIVE -> SyncDownloadError.GoogleDriveDownloadFailed
+
         SyncAccounts.ICLOUD -> SyncDownloadError.ICloudDownloadFailed
+
+        SyncAccounts.FOLDER -> SyncDownloadError.FolderDownloadFailed
+
         SyncAccounts.DROPBOX,
         SyncAccounts.LOCAL,
         SyncAccounts.FRESH_RSS,

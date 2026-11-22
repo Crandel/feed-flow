@@ -33,7 +33,10 @@ internal class FeedRecoveryService(
     private val logger: Logger,
 ) {
     @Suppress("ThrowsCount")
-    suspend fun recover(request: FeedRecoveryRequest, ticket: RecoveryTicket): FeedSource {
+    suspend fun recover(
+        request: FeedRecoveryRequest,
+        ticket: RecoveryTicket,
+    ): FeedSource {
         if (accountsRepository.getCurrentSyncAccount() !in LOCAL_ACCOUNTS) {
             throw WebsiteVerificationFailure(VerificationFailure.Unsupported)
         }
@@ -43,21 +46,23 @@ internal class FeedRecoveryService(
         // Singleton: without this the first lookup of a domain answers every later recovery.
         feedSourceLogoRetriever.invalidateLookupCaches()
 
-        val source = ticket.guard {
-            coordinator.verify(request.verificationUrl, VerificationPurpose.Feed, ticket) { capture, profile ->
-                if (!recoveryRepository.isCurrent(profile)) {
-                    throw WebsiteVerificationFailure(VerificationFailure.BrowserStopped)
+        val source =
+            ticket.guard {
+                coordinator.verify(request.verificationUrl, VerificationPurpose.Feed, ticket) { capture, profile ->
+                    if (!recoveryRepository.isCurrent(profile)) {
+                        throw WebsiteVerificationFailure(VerificationFailure.BrowserStopped)
+                    }
+                    val channel =
+                        try {
+                            parser.parse(capture.bytes, capture.contentType)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            throw WebsiteVerificationFailure(VerificationFailure.InvalidContent)
+                        }
+                    commit(request, channel, capture, profile, ticket)
                 }
-                val channel = try {
-                    parser.parse(capture.bytes, capture.contentType)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    throw WebsiteVerificationFailure(VerificationFailure.InvalidContent)
-                }
-                commit(request, channel, capture, profile, ticket)
             }
-        }
         try {
             feedSyncRepository.enqueueBackup()
         } catch (e: CancellationException) {
@@ -79,17 +84,18 @@ internal class FeedRecoveryService(
         val source = sourceFor(request, channel)
         val items = rssChannelMapper.getFeedItems(channel, source)
         val cloudSession = feedSyncRepository.cloudSessionForEdit()
-        val record = FeedRecoveryRecord(
-            accountEpoch = ticket.accountEpoch,
-            sourceId = source.id,
-            subscriptionUrl = source.url,
-            effectiveUrl = capture.effectiveUrl,
-            origin = profile.origin,
-            mode = RecoveryMode.SessionApproved,
-            profileId = profile.id,
-            statusCode = null,
-            retryAfter = null,
-        )
+        val record =
+            FeedRecoveryRecord(
+                accountEpoch = ticket.accountEpoch,
+                sourceId = source.id,
+                subscriptionUrl = source.url,
+                effectiveUrl = capture.effectiveUrl,
+                origin = profile.origin,
+                mode = RecoveryMode.SessionApproved,
+                profileId = profile.id,
+                statusCode = null,
+                retryAfter = null,
+            )
         try {
             databaseHelper.commitRecoveredFeed(
                 source = source,
@@ -110,76 +116,93 @@ internal class FeedRecoveryService(
         return source
     }
 
-    private suspend fun sourceFor(request: FeedRecoveryRequest, channel: RssChannel): FeedSource {
+    private suspend fun sourceFor(
+        request: FeedRecoveryRequest,
+        channel: RssChannel,
+    ): FeedSource {
         val now = dateFormatter.currentTimeMillis()
         return when (request) {
-            is FeedRecoveryRequest.Add -> FeedSource(
-                id = request.subscriptionUrl.hashCode().toString(),
-                url = request.subscriptionUrl,
-                title = rssChannelMapper.getFeedTitle(channel)
-                    ?: throw WebsiteVerificationFailure(VerificationFailure.InvalidContent),
-                category = request.category,
-                lastSyncTimestamp = now,
-                logoUrl = feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.subscriptionUrl),
-                websiteUrl = channel.link,
-                fetchFailed = false,
-                articleOpenMode = ArticleOpenMode.DEFAULT,
-                isHiddenFromTimeline = false,
-                isPinned = false,
-                isNotificationEnabled = request.notificationsEnabled,
-                isHideImagesEnabled = false,
-            )
+            is FeedRecoveryRequest.Add -> {
+                FeedSource(
+                    id = request.subscriptionUrl.hashCode().toString(),
+                    url = request.subscriptionUrl,
+                    title =
+                    rssChannelMapper.getFeedTitle(channel)
+                        ?: throw WebsiteVerificationFailure(VerificationFailure.InvalidContent),
+                    category = request.category,
+                    lastSyncTimestamp = now,
+                    logoUrl = feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.subscriptionUrl),
+                    websiteUrl = channel.link,
+                    fetchFailed = false,
+                    articleOpenMode = ArticleOpenMode.DEFAULT,
+                    isHiddenFromTimeline = false,
+                    isPinned = false,
+                    isNotificationEnabled = request.notificationsEnabled,
+                    isHideImagesEnabled = false,
+                )
+            }
 
-            is FeedRecoveryRequest.Edit -> request.replacement.copy(
-                lastSyncTimestamp = now,
-                websiteUrl = channel.link ?: request.replacement.websiteUrl,
-                fetchFailed = false,
-            )
+            is FeedRecoveryRequest.Edit -> {
+                request.replacement.copy(
+                    lastSyncTimestamp = now,
+                    websiteUrl = channel.link ?: request.replacement.websiteUrl,
+                    fetchFailed = false,
+                )
+            }
 
-            is FeedRecoveryRequest.Refresh -> request.source.copy(
-                lastSyncTimestamp = now,
-                logoUrl = request.source.logoUrl
-                    ?: feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.source.url),
-                websiteUrl = request.source.websiteUrl ?: channel.link,
-                fetchFailed = false,
-            )
+            is FeedRecoveryRequest.Refresh -> {
+                request.source.copy(
+                    lastSyncTimestamp = now,
+                    logoUrl =
+                    request.source.logoUrl
+                        ?: feedSourceLogoRetriever.getFeedSourceLogoUrl(channel, feedUrl = request.source.url),
+                    websiteUrl = request.source.websiteUrl ?: channel.link,
+                    fetchFailed = false,
+                )
+            }
         }
     }
 
     private suspend fun isBackingOff(request: FeedRecoveryRequest): Boolean {
         val now = dateFormatter.currentTimeMillis()
         val requested = FeedRefreshScheduler.computeBackoffTimestamp(now = now, retryAfter = request.retryAfter)
-        val existingId = when (request) {
-            is FeedRecoveryRequest.Add -> null
-            is FeedRecoveryRequest.Edit -> request.original.id
-            is FeedRecoveryRequest.Refresh -> request.source.id
-        }
-        val cached = existingId?.let { id ->
-            databaseHelper.getFeedSourcesCacheInfo().firstOrNull { it.feedSourceId == id }?.backoffTimestamp
-        }
+        val existingId =
+            when (request) {
+                is FeedRecoveryRequest.Add -> null
+                is FeedRecoveryRequest.Edit -> request.original.id
+                is FeedRecoveryRequest.Refresh -> request.source.id
+            }
+        val cached =
+            existingId?.let { id ->
+                databaseHelper.getFeedSourcesCacheInfo().firstOrNull { it.feedSourceId == id }?.backoffTimestamp
+            }
         return listOfNotNull(requested, cached).any { it > now }
     }
 
     private val FeedRecoveryRequest.operation: RecoveredFeedOperation
-        get() = when (this) {
-            is FeedRecoveryRequest.Add -> RecoveredFeedOperation.Add
-            is FeedRecoveryRequest.Edit -> RecoveredFeedOperation.Edit
-            is FeedRecoveryRequest.Refresh -> RecoveredFeedOperation.Refresh
-        }
+        get() =
+            when (this) {
+                is FeedRecoveryRequest.Add -> RecoveredFeedOperation.Add
+                is FeedRecoveryRequest.Edit -> RecoveredFeedOperation.Edit
+                is FeedRecoveryRequest.Refresh -> RecoveredFeedOperation.Refresh
+            }
 
     private val FeedRecoveryRequest.expectedUrl: String?
-        get() = when (this) {
-            is FeedRecoveryRequest.Add -> null
-            is FeedRecoveryRequest.Edit -> original.url
-            is FeedRecoveryRequest.Refresh -> source.url
-        }
+        get() =
+            when (this) {
+                is FeedRecoveryRequest.Add -> null
+                is FeedRecoveryRequest.Edit -> original.url
+                is FeedRecoveryRequest.Refresh -> source.url
+            }
 
     private companion object {
-        val LOCAL_ACCOUNTS = setOf(
-            SyncAccounts.LOCAL,
-            SyncAccounts.DROPBOX,
-            SyncAccounts.GOOGLE_DRIVE,
-            SyncAccounts.ICLOUD,
-        )
+        val LOCAL_ACCOUNTS =
+            setOf(
+                SyncAccounts.LOCAL,
+                SyncAccounts.DROPBOX,
+                SyncAccounts.GOOGLE_DRIVE,
+                SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
+            )
     }
 }

@@ -24,6 +24,7 @@ import com.prof18.feedflow.core.model.ThemeMode
 import com.prof18.feedflow.core.utils.AppEnvironment
 import com.prof18.feedflow.database.DatabaseHelper
 import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
+import com.prof18.feedflow.feedsync.folder.FolderSettings
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveSettings
 import com.prof18.feedflow.feedsync.icloud.ICloudSettings
 import com.prof18.feedflow.feedsync.networkcore.NetworkSettings
@@ -49,6 +50,7 @@ class E2eSeedRunner internal constructor(
     private val feedStateRepository: FeedStateRepository,
     private val dropboxSettings: DropboxSettings,
     private val googleDriveSettings: GoogleDriveSettings,
+    private val folderSettings: FolderSettings,
     private val icloudSettings: ICloudSettings,
     private val networkSettings: NetworkSettings,
     private val audioPositions: AudioPlaybackPositionRepository,
@@ -515,6 +517,13 @@ class E2eSeedRunner internal constructor(
                 googleDriveSettings.setBackupFileId("e2e-google-drive-backup")
             }
 
+            E2eSeedAccount.FOLDER -> {
+                accountsRepository.setFolderAccount()
+                folderSettings.setFolderLocation(MOCK_FOLDER_LOCATION)
+                folderSettings.setLastUploadTimestamp(SEED_NOW_MILLIS)
+                folderSettings.setLastDownloadTimestamp(SEED_NOW_MILLIS)
+            }
+
             E2eSeedAccount.ICLOUD -> {
                 accountsRepository.setICloudAccount()
                 icloudSettings.setUseICloud(true)
@@ -762,6 +771,9 @@ class E2eSeedRunner internal constructor(
         private const val HIDDEN_ARTICLE_ID = "e2e-article-hidden"
         private const val PINNED_ARTICLE_ID = "e2e-article-pinned"
         private const val DROPBOX_MOCK_CREDENTIALS = """{"access_token":"e2e-dropbox-token"}"""
+
+        // Never accessed by the mock-state flows; sync attempts against it fail like the other mock credentials.
+        private const val MOCK_FOLDER_LOCATION = "/e2e/mock-folder"
 
         private const val SEED_NOW_MILLIS = 1_765_152_000_000L
         private const val ONE_HOUR_MILLIS = 3_600_000L

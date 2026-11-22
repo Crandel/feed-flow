@@ -20,6 +20,9 @@ import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
 import com.prof18.feedflow.feedsync.dropbox.DropboxStringCredentials
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadConflictException
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadParam
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
+import com.prof18.feedflow.feedsync.folder.FolderSettings
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceJvm
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadParam
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveNeedsReAuthException
@@ -57,21 +60,23 @@ internal class FeedSyncJvmWorker(
     private val googleDriveSettings: GoogleDriveSettings,
     private val accountsRepository: AccountsRepository,
     private val iCloudSettings: ICloudSettings,
+    private val folderSyncDataSource: FolderSyncDataSource,
+    private val folderSettings: FolderSettings,
     private val syncDirectory: File = File(AppDataPathBuilder.getAppDataPath(appEnvironment)),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val iCloudBridge: ICloudFileTransfer = ICloudNativeBridge(),
 ) : FeedSyncWorker {
-
     private val mutex = Mutex()
     private var downloadSession: String? = null
     private var dropboxRevision: String? = null
 
     private val appPath = syncDirectory.path
-    private val databaseName = if (appEnvironment.isDebug()) {
-        SYNC_DATABASE_NAME_DEBUG
-    } else {
-        SYNC_DATABASE_NAME_PROD
-    }
+    private val databaseName =
+        if (appEnvironment.isDebug()) {
+            SYNC_DATABASE_NAME_DEBUG
+        } else {
+            SYNC_DATABASE_NAME_PROD
+        }
     private val databaseFile = File(appPath, "/$databaseName.db")
 
     override suspend fun uploadImmediate() {
@@ -86,78 +91,91 @@ internal class FeedSyncJvmWorker(
         }
     }
 
-    private suspend fun performUpload() = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            var snapshot: File? = null
-            try {
-                val uploadSession = requireNotNull(pendingCloudChanges.sessionForEdit())
-                retryDropboxConflicts {
-                    snapshot?.delete()
-                    snapshot = null
-                    val uploadAccount = accountsRepository.getCurrentSyncAccount()
-                    val result = downloadLocked(
-                        expectedSession = uploadSession,
-                    )
-                    pendingCloudChanges.checkAccountSession(uploadSession)
-                    when {
-                        result is SyncResult.BackupNotFound -> feedSyncer.prepareInitialUpload()
-                        result.isError() -> {
-                            feedSyncMessageQueue.emitResult(result)
-                            return@withLock
-                        }
-                    }
-                    if (uploadAccount == SyncAccounts.DROPBOX && result !is SyncResult.BackupNotFound) {
-                        requireNotNull(dropboxRevision) { "Dropbox download did not return a revision" }
-                    }
-                    val pendingBatch = pendingCloudChanges.capturePendingChanges()
-                    val uploadGeneration = settingsRepository.captureSyncUploadGeneration()
-                    pendingCloudChanges.applyChangesToSyncDatabase(pendingBatch)
-                    val uploaded = if (uploadAccount == SyncAccounts.ICLOUD) {
-                        feedSyncer.withClosedDatabase {
-                            pendingCloudChanges.checkAccountSession(uploadSession)
-                            accountSpecificUpload(databaseFile, uploadAccount)
-                        }
-                    } else {
-                        snapshot = File.createTempFile("cloud-upload-", ".db", syncDirectory)
-                        feedSyncer.withClosedDatabase {
-                            databaseFile.copyTo(requireNotNull(snapshot), overwrite = true)
-                        }
+    private suspend fun performUpload() =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                var snapshot: File? = null
+                try {
+                    val uploadSession = requireNotNull(pendingCloudChanges.sessionForEdit())
+                    retryDropboxConflicts {
+                        snapshot?.delete()
+                        snapshot = null
+                        val uploadAccount = accountsRepository.getCurrentSyncAccount()
+                        val result =
+                            downloadLocked(
+                                expectedSession = uploadSession,
+                            )
                         pendingCloudChanges.checkAccountSession(uploadSession)
-                        accountSpecificUpload(requireNotNull(snapshot), uploadAccount)
-                    }
+                        when {
+                            result is SyncResult.BackupNotFound -> {
+                                feedSyncer.prepareInitialUpload()
+                            }
 
-                    if (uploaded) {
-                        pendingCloudChanges.markChangesAsUploaded(pendingBatch)
-                        settingsRepository.acknowledgeSyncUpload(uploadGeneration)
-                        emitSuccessMessage()
+                            result.isError() -> {
+                                feedSyncMessageQueue.emitResult(result)
+                                return@withLock
+                            }
+                        }
+                        if (uploadAccount == SyncAccounts.DROPBOX && result !is SyncResult.BackupNotFound) {
+                            requireNotNull(dropboxRevision) { "Dropbox download did not return a revision" }
+                        }
+                        val pendingBatch = pendingCloudChanges.capturePendingChanges()
+                        val uploadGeneration = settingsRepository.captureSyncUploadGeneration()
+                        pendingCloudChanges.applyChangesToSyncDatabase(pendingBatch)
+                        val uploaded =
+                            if (uploadAccount == SyncAccounts.ICLOUD) {
+                                feedSyncer.withClosedDatabase {
+                                    pendingCloudChanges.checkAccountSession(uploadSession)
+                                    accountSpecificUpload(databaseFile, uploadAccount)
+                                }
+                            } else {
+                                snapshot = File.createTempFile("cloud-upload-", ".db", syncDirectory)
+                                feedSyncer.withClosedDatabase {
+                                    databaseFile.copyTo(requireNotNull(snapshot), overwrite = true)
+                                }
+                                pendingCloudChanges.checkAccountSession(uploadSession)
+                                accountSpecificUpload(requireNotNull(snapshot), uploadAccount)
+                            }
+
+                        if (uploaded) {
+                            pendingCloudChanges.markChangesAsUploaded(pendingBatch)
+                            settingsRepository.acknowledgeSyncUpload(uploadGeneration)
+                            emitSuccessMessage()
+                        }
                     }
+                } catch (e: GoogleDriveNeedsReAuthException) {
+                    logger.d("Google Drive needs re-authorization", e)
+                    feedSyncMessageQueue.emitResult(SyncResult.GoogleDriveNeedReAuth())
+                } catch (e: FolderNotAccessibleException) {
+                    logger.d("Sync folder is not accessible during upload", e)
+                    feedSyncMessageQueue.emitResult(SyncResult.General(SyncUploadError.FolderNotAccessible))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!e.isTemporaryNetworkError()) {
+                        logger.e("Upload to dropbox failed", e)
+                    }
+                    emitErrorMessage()
+                } finally {
+                    snapshot?.delete()
                 }
-            } catch (e: GoogleDriveNeedsReAuthException) {
-                logger.d("Google Drive needs re-authorization", e)
-                feedSyncMessageQueue.emitResult(SyncResult.GoogleDriveNeedReAuth())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (!e.isTemporaryNetworkError()) {
-                    logger.e("Upload to dropbox failed", e)
-                }
-                emitErrorMessage()
-            } finally {
-                snapshot?.delete()
             }
         }
-    }
 
-    private suspend fun accountSpecificUpload(uploadFile: File, account: SyncAccounts): Boolean =
+    private suspend fun accountSpecificUpload(
+        uploadFile: File,
+        account: SyncAccounts,
+    ): Boolean =
         when (account) {
             SyncAccounts.DROPBOX -> {
                 restoreDropboxClient()
 
-                val dropboxUploadParam = DropboxUploadParam(
-                    path = "/${getDatabaseNameWithExtension()}",
-                    file = uploadFile,
-                    expectedRevision = dropboxRevision,
-                )
+                val dropboxUploadParam =
+                    DropboxUploadParam(
+                        path = "/${getDatabaseNameWithExtension()}",
+                        file = uploadFile,
+                        expectedRevision = dropboxRevision,
+                    )
 
                 val result = dropboxDataSource.performUpload(dropboxUploadParam)
                 if (result.isConflict) throw DropboxUploadConflictException()
@@ -200,14 +218,25 @@ internal class FeedSyncJvmWorker(
                     return false
                 }
 
-                val googleDriveUploadParam = GoogleDriveUploadParam(
-                    fileName = getDatabaseNameWithExtension(),
-                    file = uploadFile,
-                )
+                val googleDriveUploadParam =
+                    GoogleDriveUploadParam(
+                        fileName = getDatabaseNameWithExtension(),
+                        file = uploadFile,
+                    )
 
                 googleDriveDataSource.performUpload(googleDriveUploadParam)
                 googleDriveSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
                 logger.d { "Upload to Google Drive successfully" }
+                true
+            }
+
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.upload(
+                    source = uploadFile.path,
+                    fileName = getDatabaseNameWithExtension(),
+                )
+                folderSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Upload to folder successfully" }
                 true
             }
 
@@ -216,16 +245,17 @@ internal class FeedSyncJvmWorker(
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
-            -> true
+            -> {
+                true
+            }
         }
 
-    override suspend fun download(isFirstSync: Boolean): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock { downloadLocked() }
-    }
+    override suspend fun download(isFirstSync: Boolean): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock { downloadLocked() }
+        }
 
-    private suspend fun downloadLocked(
-        expectedSession: String? = null,
-    ): SyncResult {
+    private suspend fun downloadLocked(expectedSession: String? = null): SyncResult {
         var stagedFile: File? = null
         return try {
             dropboxRevision = null
@@ -239,6 +269,9 @@ internal class FeedSyncJvmWorker(
         } catch (e: GoogleDriveNeedsReAuthException) {
             logger.d("Google Drive needs re-authorization", e)
             SyncResult.GoogleDriveNeedReAuth()
+        } catch (e: FolderNotAccessibleException) {
+            logger.d("Sync folder is not accessible during download", e)
+            SyncResult.General(SyncDownloadError.FolderNotAccessible)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -254,23 +287,26 @@ internal class FeedSyncJvmWorker(
     private suspend fun accountSpecificDownload(stagedFile: File): SyncResult {
         return when (accountsRepository.getCurrentSyncAccount()) {
             SyncAccounts.DROPBOX -> {
-                val dropboxDownloadParam = DropboxDownloadParam(
-                    path = "/${getDatabaseNameWithExtension()}",
-                    outputStream = FileOutputStream(stagedFile),
-                )
+                val dropboxDownloadParam =
+                    DropboxDownloadParam(
+                        path = "/${getDatabaseNameWithExtension()}",
+                        outputStream = FileOutputStream(stagedFile),
+                    )
 
                 restoreDropboxClient()
-                val result = dropboxDownloadParam.outputStream.use {
-                    dropboxDataSource.performDownload(dropboxDownloadParam)
-                }
+                val result =
+                    dropboxDownloadParam.outputStream.use {
+                        dropboxDataSource.performDownload(dropboxDownloadParam)
+                    }
                 dropboxRevision = result.revision
                 installDownloadedFile(stagedFile)
                 dropboxSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
                 SyncResult.Success
             }
+
             SyncAccounts.ICLOUD -> {
                 val result = iCloudBridge.downloadToFile(appEnvironment.isDebug(), stagedFile.absolutePath)
-                when (DownloadResult.fromCode(result)) {
+                when (val download = DownloadResult.fromCode(result)) {
                     DownloadResult.SUCCESS -> {
                         installDownloadedFile(stagedFile)
                         iCloudSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
@@ -278,48 +314,32 @@ internal class FeedSyncJvmWorker(
                         SyncResult.Success
                     }
 
-                    DownloadResult.URL_NULL -> {
-                        logger.d { "iCloud URL is null" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.TEMP_URL_NULL -> {
-                        logger.d { "Temporary URL is null" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.DOWNLOAD_ERROR -> {
-                        logger.d { "Error during iCloud download" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.DATABASE_REPLACE_ERROR -> {
-                        logger.d { "Error during database replace" }
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-                    }
-
-                    DownloadResult.FILE_NOT_FOUND ->
-                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
-
-                    DownloadResult.REMOTE_FILE_NOT_FOUND ->
+                    DownloadResult.REMOTE_FILE_NOT_FOUND -> {
                         SyncResult.BackupNotFound(SyncDownloadError.ICloudDownloadFailed)
+                    }
 
-                    DownloadResult.UNKNOWN_ERROR -> {
-                        logger.d { "Unknown error during iCloud download. Check the enum mapping" }
+                    DownloadResult.FILE_NOT_FOUND -> {
+                        SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
+                    }
+
+                    else -> {
+                        logger.d { icloudDownloadFailureMessage(download) }
                         SyncResult.General(SyncDownloadError.ICloudDownloadFailed)
                     }
                 }
             }
+
             SyncAccounts.GOOGLE_DRIVE -> {
                 restoreGoogleDriveClient()
                 if (!googleDriveDataSource.isClientSet()) {
                     return SyncResult.General(SyncDownloadError.GoogleDriveDownloadFailed)
                 }
 
-                val googleDriveDownloadParam = GoogleDriveDownloadParam(
-                    fileName = getDatabaseNameWithExtension(),
-                    outputStream = FileOutputStream(stagedFile),
-                )
+                val googleDriveDownloadParam =
+                    GoogleDriveDownloadParam(
+                        fileName = getDatabaseNameWithExtension(),
+                        outputStream = FileOutputStream(stagedFile),
+                    )
 
                 googleDriveDownloadParam.outputStream.use {
                     googleDriveDataSource.performDownload(googleDriveDownloadParam)
@@ -327,6 +347,17 @@ internal class FeedSyncJvmWorker(
                 installDownloadedFile(stagedFile)
                 googleDriveSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
                 logger.d { "Download from Google Drive successfully" }
+                SyncResult.Success
+            }
+
+            SyncAccounts.FOLDER -> {
+                folderSyncDataSource.download(
+                    fileName = getDatabaseNameWithExtension(),
+                    destination = stagedFile.path,
+                )
+                installDownloadedFile(stagedFile)
+                folderSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
+                logger.d { "Download from folder successfully" }
                 SyncResult.Success
             }
 
@@ -342,36 +373,38 @@ internal class FeedSyncJvmWorker(
         }
     }
 
-    override suspend fun syncFeedSources(): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            try {
-                feedSyncer.syncFeedSourceCategory(downloadSession)
-                feedSyncer.syncFeedSource()
-                SyncResult.Success
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Sync feed sources failed", e)
-                SyncResult.General(SyncFeedError.FeedSourcesSyncFailed)
-            }
-        }
-    }
-
-    override suspend fun syncFeedItems(): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            try {
-                feedSyncer.syncFeedItem(downloadSession)
-                SyncResult.Success
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (!e.skipLogging()) {
-                    logger.e("Sync feed items failed", e)
+    override suspend fun syncFeedSources(): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                try {
+                    feedSyncer.syncFeedSourceCategory(downloadSession)
+                    feedSyncer.syncFeedSource()
+                    SyncResult.Success
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Sync feed sources failed", e)
+                    SyncResult.General(SyncFeedError.FeedSourcesSyncFailed)
                 }
-                SyncResult.General(SyncFeedError.FeedItemsSyncFailed)
             }
         }
-    }
+
+    override suspend fun syncFeedItems(): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                try {
+                    feedSyncer.syncFeedItem(downloadSession)
+                    SyncResult.Success
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!e.skipLogging()) {
+                        logger.e("Sync feed items failed", e)
+                    }
+                    SyncResult.General(SyncFeedError.FeedItemsSyncFailed)
+                }
+            }
+        }
 
     private suspend fun installDownloadedFile(stagedFile: File) {
         prepareSyncDatabaseFile(stagedFile)
@@ -412,20 +445,32 @@ internal class FeedSyncJvmWorker(
         }
     }
 
-    private fun getDatabaseName(): String {
-        return if (appEnvironment.isDebug()) {
+    private fun getDatabaseName(): String =
+        if (appEnvironment.isDebug()) {
             SYNC_DATABASE_NAME_DEBUG
         } else {
             SYNC_DATABASE_NAME_PROD
         }
+
+    private fun getDatabaseNameWithExtension(): String = "${getDatabaseName()}.db"
+
+    private fun icloudDownloadFailureMessage(result: DownloadResult): String =
+        when (result) {
+            DownloadResult.URL_NULL -> "iCloud URL is null"
+            DownloadResult.TEMP_URL_NULL -> "Temporary URL is null"
+            DownloadResult.DATABASE_REPLACE_ERROR -> "Error during database replace"
+            DownloadResult.UNKNOWN_ERROR -> "Unknown error during iCloud download. Check the enum mapping"
+            else -> "Error during iCloud download"
+        }
+
+    private suspend fun emitErrorMessage() {
+        val uploadError =
+            when (accountsRepository.getCurrentSyncAccount()) {
+                SyncAccounts.FOLDER -> SyncUploadError.FolderUploadFailed
+                else -> SyncUploadError.DropboxUploadFailed
+            }
+        feedSyncMessageQueue.emitResult(SyncResult.General(uploadError))
     }
 
-    private fun getDatabaseNameWithExtension(): String =
-        "${getDatabaseName()}.db"
-
-    private suspend fun emitErrorMessage() =
-        feedSyncMessageQueue.emitResult(SyncResult.General(SyncUploadError.DropboxUploadFailed))
-
-    private suspend fun emitSuccessMessage() =
-        feedSyncMessageQueue.emitResult(SyncResult.Success)
+    private suspend fun emitSuccessMessage() = feedSyncMessageQueue.emitResult(SyncResult.Success)
 }

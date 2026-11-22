@@ -18,6 +18,11 @@ class DesktopCloudArtifactExchangeTest : KoinTestBase() {
     }
 
     @Test
+    fun `folder snapshot exchange`() = runTest(testDispatcher) {
+        runCloudArtifactExchange(CloudProvider.FOLDER)
+    }
+
+    @Test
     fun `icloud snapshot exchange`() = runTest(testDispatcher) {
         assumeTrue(
             "Native iCloud is supported on macOS arm64",

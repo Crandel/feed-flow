@@ -47,4 +47,23 @@ class AndroidCloudSyncSuccessTest : KoinTestBase() {
             runCloudFeedAndCategoryStaleBackupRegressions(CloudProvider.GOOGLE_DRIVE)
             runCloudSnapshotRegression(CloudProvider.GOOGLE_DRIVE)
         }
+
+    @Test
+    fun `Folder successful workflows use the real Android worker with host database files`() =
+        runTest(testDispatcher) {
+            CloudSuccessScenario.entries.forEach {
+                runCloudSuccessScenario(CloudProvider.FOLDER, it)
+            }
+            runCloudFlagRegressions(CloudProvider.FOLDER)
+            runStaleCloudRefreshRegression(CloudProvider.FOLDER)
+            runCloudTransferRegressions(CloudProvider.FOLDER)
+            runCloudInvalidSnapshotRegressions(CloudProvider.FOLDER)
+            runCloudUpgradeRegressions(CloudProvider.FOLDER)
+            runCloudPendingRegressions(CloudProvider.FOLDER)
+            runCloudFeedAndCategoryRegressions(CloudProvider.FOLDER)
+            runCloudFeedAndCategoryAccountGuardRegressions(CloudProvider.FOLDER)
+            runCloudFeedAndCategoryDeletionRegressions(CloudProvider.FOLDER)
+            runCloudFeedAndCategoryStaleBackupRegressions(CloudProvider.FOLDER)
+            runCloudSnapshotRegression(CloudProvider.FOLDER)
+        }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,16 +49,19 @@ fun AccountsContent(
     onMinifluxClick: () -> Unit,
     onBazquxClick: () -> Unit,
     onFeedbinClick: () -> Unit,
+    onFolderClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
     selectedAccount: SyncAccounts? = null,
 ) {
     Column(
-        modifier = modifier
+        modifier =
+        modifier
             .padding(top = contentPadding.calculateTopPadding()),
     ) {
         Text(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .padding(horizontal = Spacing.regular),
             text = LocalFeedFlowStrings.current.accountsDescription,
             style = MaterialTheme.typography.bodyMedium,
@@ -66,34 +70,38 @@ fun AccountsContent(
         val filteredAccounts = remember(accounts) { accounts.filter { it != SyncAccounts.LOCAL } }
 
         LazyColumn(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .padding(top = Spacing.medium),
         ) {
             items(filteredAccounts, key = { it.name }) { account ->
                 val isEnabled = syncAccount == SyncAccounts.LOCAL || syncAccount == account
-                val onClick: () -> Unit = when (account) {
-                    SyncAccounts.DROPBOX -> onDropboxCLick
-                    SyncAccounts.GOOGLE_DRIVE -> onGoogleDriveClick
-                    SyncAccounts.ICLOUD -> onICloudClick
-                    SyncAccounts.LOCAL -> ({ })
-                    SyncAccounts.FRESH_RSS -> onFreshRssClick
-                    SyncAccounts.MINIFLUX -> onMinifluxClick
-                    SyncAccounts.BAZQUX -> onBazquxClick
-                    SyncAccounts.FEEDBIN -> onFeedbinClick
-                }
+                val onClick: () -> Unit =
+                    when (account) {
+                        SyncAccounts.DROPBOX -> onDropboxCLick
+                        SyncAccounts.GOOGLE_DRIVE -> onGoogleDriveClick
+                        SyncAccounts.ICLOUD -> onICloudClick
+                        SyncAccounts.LOCAL -> ({ })
+                        SyncAccounts.FRESH_RSS -> onFreshRssClick
+                        SyncAccounts.MINIFLUX -> onMinifluxClick
+                        SyncAccounts.BAZQUX -> onBazquxClick
+                        SyncAccounts.FEEDBIN -> onFeedbinClick
+                        SyncAccounts.FOLDER -> onFolderClick
+                    }
                 Row(
-                    modifier = Modifier
+                    modifier =
+                    Modifier
                         .testTag(AccountE2eIds.providerRow(account))
                         .padding(horizontal = Spacing.regular)
                         .clip(RoundedCornerShape(size = 8.dp))
                         .background(
-                            color = if (account == selectedAccount) {
+                            color =
+                            if (account == selectedAccount) {
                                 MaterialTheme.colorScheme.surfaceVariant
                             } else {
                                 Color.Transparent
                             },
-                        )
-                        .clickable(enabled = isEnabled, onClick = onClick)
+                        ).clickable(enabled = isEnabled, onClick = onClick)
                         .alpha(alpha = if (isEnabled) 1f else 0.5f),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -105,7 +113,8 @@ fun AccountsContent(
 
                     if (syncAccount == account) {
                         Icon(
-                            modifier = Modifier
+                            modifier =
+                            Modifier
                                 .padding(horizontal = Spacing.regular),
                             imageVector = Icons.Filled.Check,
                             contentDescription = null,
@@ -127,6 +136,7 @@ private fun SyncAccounts.getTitle() =
         SyncAccounts.MINIFLUX -> "Miniflux"
         SyncAccounts.BAZQUX -> "BazQux"
         SyncAccounts.FEEDBIN -> "Feedbin"
+        SyncAccounts.FOLDER -> "Folder"
     }
 
 private fun SyncAccounts.getIcon() =
@@ -139,6 +149,7 @@ private fun SyncAccounts.getIcon() =
         SyncAccounts.MINIFLUX -> Miniflux
         SyncAccounts.BAZQUX -> Bazqux
         SyncAccounts.FEEDBIN -> Feedbin
+        SyncAccounts.FOLDER -> Icons.Filled.Folder
     }
 
 @Composable
@@ -149,7 +160,8 @@ private fun AccountsItem(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(
+        modifier =
+        modifier.padding(
             horizontal = Spacing.small,
             vertical = Spacing.regular,
         ),

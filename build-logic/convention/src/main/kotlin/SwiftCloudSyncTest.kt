@@ -64,7 +64,10 @@ abstract class SwiftCloudSyncTest @Inject constructor(
                     "-destination", destination.orNull ?: "platform=iOS Simulator,id=${findSimulatorId()}",
                     "-derivedDataPath", derivedDataDirectory.get().asFile.absolutePath,
                     // Shared with ios-tests.sh and the CI iOS build, which cache it between runs.
-                    "-clonedSourcePackagesDirPath", rootDirectory.dir("build/ios-source-packages").get().asFile.absolutePath,
+                    "-clonedSourcePackagesDirPath",
+                    rootDirectory.dir(
+                        "build/ios-source-packages",
+                    ).get().asFile.absolutePath,
                     "-resultBundlePath", resultBundle.absolutePath,
                     "OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES",
                     "FRAMEWORK_SEARCH_PATHS=\"${frameworkDirectory.get().asFile.absolutePath}\"",
@@ -125,7 +128,9 @@ abstract class SwiftCloudSyncTest @Inject constructor(
             .filter { it["name"].toString().startsWith("iPhone") }
         val device = PREFERRED_SIMULATORS.firstNotNullOfOrNull { name -> iPhones.firstOrNull { it["name"] == name } }
             ?: iPhones.firstOrNull()
-            ?: throw GradleException("No iPhone simulator is installed; install one or set -Pfeedflow.swiftCloudSyncDestination")
+            ?: throw GradleException(
+                "No iPhone simulator is installed; install one or set -Pfeedflow.swiftCloudSyncDestination",
+            )
         logger.lifecycle("Swift cloud adapter tests run on ${device["name"]}")
         return device["udid"].toString()
     }

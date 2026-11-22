@@ -36,12 +36,19 @@ class AndroidCloudWorkManagerSuccessTest : KoinTestBase() {
     fun `queued Drive backup runs the real Android worker to success`() = verifyQueue(CloudProvider.GOOGLE_DRIVE)
 
     @Test
+    fun `queued Folder backup runs the real Android worker to success`() = verifyQueue(CloudProvider.FOLDER)
+
+    @Test
     fun `queued Dropbox backup preserves existing cloud state during upgrade`() =
         verifyUpgradeQueue(CloudProvider.DROPBOX)
 
     @Test
     fun `queued Drive backup preserves existing cloud state during upgrade`() =
         verifyUpgradeQueue(CloudProvider.GOOGLE_DRIVE)
+
+    @Test
+    fun `queued Folder backup preserves existing cloud state during upgrade`() =
+        verifyUpgradeQueue(CloudProvider.FOLDER)
 
     private fun verifyQueue(provider: CloudProvider) = runTest(testDispatcher) {
         val context = ApplicationProvider.getApplicationContext<Context>()

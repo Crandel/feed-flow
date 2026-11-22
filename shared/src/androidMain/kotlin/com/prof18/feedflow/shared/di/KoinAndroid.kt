@@ -39,6 +39,7 @@ import com.prof18.feedflow.shared.domain.recovery.CapturedFeedParser
 import com.prof18.feedflow.shared.domain.recovery.WebsiteIdentityProvider
 import com.prof18.feedflow.shared.domain.recovery.WebsiteSessionHttp
 import com.prof18.feedflow.shared.presentation.DropboxSyncViewModel
+import com.prof18.feedflow.shared.presentation.FolderSyncViewModel
 import com.prof18.feedflow.shared.presentation.GoogleDriveSyncViewModel
 import com.prof18.feedflow.shared.presentation.ThemeViewModel
 import com.prof18.feedflow.shared.presentation.WidgetRefreshState
@@ -146,6 +147,19 @@ internal actual fun getPlatformModule(appEnvironment: AppEnvironment): Module = 
         )
     }
 
+    viewModel {
+        FolderSyncViewModel(
+            logger = getWith("FolderSyncViewModel"),
+            folderSettings = get(),
+            folderSyncDataSource = get(),
+            feedSyncRepository = get(),
+            dateFormatter = get(),
+            accountsRepository = get(),
+            feedFetcherRepository = get(),
+            feedSyncMessageQueue = get(),
+        )
+    }
+
     single {
         FeedSyncAndroidWorker(
             context = get(),
@@ -161,6 +175,8 @@ internal actual fun getPlatformModule(appEnvironment: AppEnvironment): Module = 
             googleDriveSettings = get(),
             settingsRepository = get(),
             accountsRepository = get(),
+            folderSyncDataSource = get(),
+            folderSettings = get(),
         )
     } bind FeedSyncWorker::class
 

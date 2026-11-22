@@ -21,6 +21,7 @@ the fixture's initial state and restore only when it is in the authorized scope.
 | Dropbox | supported | supported | supported | Test real account transfers. |
 | Google Drive | supported | supported | supported | Flatpak excludes Drive. |
 | iCloud | — | macOS only | supported | Apple devices/accounts and entitlements required. |
+| Folder | supported | Linux only | — | Local user-chosen folder; no provider account or live auth. |
 
 The deterministic suite covers the same merge rules through provider doubles.
 Live testing proves the installed app, real provider authorization, transfer, and

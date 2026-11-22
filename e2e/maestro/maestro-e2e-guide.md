@@ -108,7 +108,7 @@ feedflow://e2e/reset-and-seed?profile=content-rich
 feedflow://e2e/reset-and-seed?profile=sync-linked-mock&account=fresh_rss
 ```
 
-`sync-linked-mock` and `sync-upload-required` can select a seeded account with `account=fresh_rss`, `miniflux`, `bazqux`, `feedbin`, `dropbox`, or `icloud`.
+`sync-linked-mock` and `sync-upload-required` can select a seeded account with `account=fresh_rss`, `miniflux`, `bazqux`, `feedbin`, `dropbox`, `folder`, or `icloud`.
 
 `content-rich` also accepts `verification=pending` on `reset-and-seed` (Android and iOS, debug builds
 only). The fixture points the seeded Android Weekly feed at the reserved

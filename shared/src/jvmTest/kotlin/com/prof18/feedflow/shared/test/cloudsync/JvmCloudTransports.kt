@@ -6,6 +6,8 @@ import com.prof18.feedflow.feedsync.dropbox.DropboxDownloadParam
 import com.prof18.feedflow.feedsync.dropbox.DropboxDownloadResult
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadParam
 import com.prof18.feedflow.feedsync.dropbox.DropboxUploadResult
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
+import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDataSourceJvm
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadParam
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveDownloadResult
@@ -100,5 +102,44 @@ internal class JvmICloudTransport(
             return 6
         }
         return 0
+    }
+}
+
+internal class JvmFolderTransport(
+    private val store: CloudStore,
+    private val device: String,
+) : FolderSyncDataSource {
+    var accessible = true
+    var writable = true
+    override fun isLinked(): Boolean = true
+
+    override suspend fun checkAccess() {
+        ensureAccessible()
+    }
+
+    override suspend fun upload(
+        source: String,
+        fileName: String,
+    ) {
+        ensureAccessible()
+        if (!writable) throw FolderNotAccessibleException()
+        store.beforeUploadRead()
+        store.upload(CloudProvider.FOLDER, ACCOUNT, fileName, File(source).readBytes(), device)
+    }
+
+    override suspend fun download(
+        fileName: String,
+        destination: String,
+    ) {
+        ensureAccessible()
+        File(destination).writeBytes(store.download(CloudProvider.FOLDER, ACCOUNT, fileName))
+    }
+
+    override fun releaseAccess() {
+        accessible = false
+    }
+
+    private fun ensureAccessible() {
+        if (!accessible) throw FolderNotAccessibleException()
     }
 }

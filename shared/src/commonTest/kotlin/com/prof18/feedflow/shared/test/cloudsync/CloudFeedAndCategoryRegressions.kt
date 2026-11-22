@@ -2,6 +2,7 @@ package com.prof18.feedflow.shared.test.cloudsync
 
 import com.prof18.feedflow.core.model.FeedItemId
 import com.prof18.feedflow.feedsync.dropbox.DropboxSettings
+import com.prof18.feedflow.feedsync.folder.FolderSettings
 import com.prof18.feedflow.feedsync.googledrive.GoogleDriveSettings
 import com.prof18.feedflow.feedsync.icloud.ICloudSettings
 import com.prof18.feedflow.shared.domain.feed.FeedSourcesRepository
@@ -205,6 +206,10 @@ private suspend fun verifyLocalEditGuardAfterAccountChange(device: CloudDevice, 
         CloudProvider.ICLOUD -> {
             device.application.koin.get<ICloudSettings>().setUseICloud(true)
             accounts.setICloudAccount()
+        }
+        CloudProvider.FOLDER -> {
+            device.application.koin.get<FolderSettings>().setFolderLocation("fixture-folder")
+            accounts.setFolderAccount()
         }
     }
     val before = device.database.getFeedSources()
