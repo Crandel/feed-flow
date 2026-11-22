@@ -148,6 +148,7 @@ class ProviderContentTest(private val account: SyncAccounts) {
         @JvmStatic
         @Parameterized.Parameters(name = "{0}")
         fun accounts(): List<Array<SyncAccounts>> = SyncAccounts.entries
-            .filter { it != SyncAccounts.LOCAL }.map { arrayOf(it) }
+            // FOLDER joins once FolderSyncScreen.desktop.kt exists (add-folder-sync-provider task 7.2).
+            .filter { it != SyncAccounts.LOCAL && it != SyncAccounts.FOLDER }.map { arrayOf(it) }
     }
 }

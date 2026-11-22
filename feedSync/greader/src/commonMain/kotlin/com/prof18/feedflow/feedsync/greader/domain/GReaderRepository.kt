@@ -46,8 +46,9 @@ class GReaderRepository internal constructor(
     private val feedSourceLogoRetriever: FeedSourceLogoRetriever,
 ) {
     fun isAccountSet(): Boolean {
-        val hasCredentials = networkSettings.getSyncPwd().isNotEmpty() &&
-            networkSettings.getSyncUrl().isNotEmpty()
+        val hasCredentials =
+            networkSettings.getSyncPwd().isNotEmpty() &&
+                networkSettings.getSyncUrl().isNotEmpty()
         return when (networkSettings.getSyncAccountType()) {
             SyncAccounts.FRESH_RSS,
             SyncAccounts.MINIFLUX,
@@ -58,7 +59,8 @@ class GReaderRepository internal constructor(
             SyncAccounts.GOOGLE_DRIVE,
             SyncAccounts.LOCAL,
             SyncAccounts.ICLOUD,
-            SyncAccounts.FEEDBIN, null,
+            SyncAccounts.FEEDBIN,
+            SyncAccounts.FOLDER, null,
             -> false
         }
     }
@@ -67,119 +69,126 @@ class GReaderRepository internal constructor(
         username: String,
         password: String,
         baseURL: String,
-    ): DataResult<Unit> = gReaderClient.login(username, password, baseURL)
-        .map { response ->
-            logger.d { "Login successful: $response" }
-            val authToken = getAuthToken(response) ?: return NetworkFailure.Unauthorised.error()
+    ): DataResult<Unit> =
+        gReaderClient
+            .login(username, password, baseURL)
+            .map { response ->
+                logger.d { "Login successful: $response" }
+                val authToken = getAuthToken(response) ?: return NetworkFailure.Unauthorised.error()
 
-            if (authToken == UNAUTHORIZED_MESSAGE) {
-                logger.d { "Unauthorized Login" }
-                return NetworkFailure.Unauthorised.error()
+                if (authToken == UNAUTHORIZED_MESSAGE) {
+                    logger.d { "Unauthorized Login" }
+                    return NetworkFailure.Unauthorised.error()
+                }
+                networkSettings.setSyncPwd(authToken)
+                networkSettings.setSyncUsername(username)
+                networkSettings.setSyncUrl(baseURL)
+                networkSettings.clearLastSyncDate()
+                databaseHelper.deleteAll()
             }
-            networkSettings.setSyncPwd(authToken)
-            networkSettings.setSyncUsername(username)
-            networkSettings.setSyncUrl(baseURL)
-            networkSettings.clearLastSyncDate()
-            databaseHelper.deleteAll()
-        }
 
-    suspend fun sync(): DataResult<Unit> = withContext(dispatcherProvider.io) {
-        logger.d { "Sync started" }
+    suspend fun sync(): DataResult<Unit> =
+        withContext(dispatcherProvider.io) {
+            logger.d { "Sync started" }
 
-        val categoriesResult = fetchFeedSourcesAndCategories()
-        if (categoriesResult.isError()) {
-            return@withContext categoriesResult
-        }
+            val categoriesResult = fetchFeedSourcesAndCategories()
+            if (categoriesResult.isError()) {
+                return@withContext categoriesResult
+            }
 
-        val lastUpdate = networkSettings.getLastSyncDate()
-        val feedSources = databaseHelper.getFeedSources()
+            val lastUpdate = networkSettings.getLastSyncDate()
+            val feedSources = databaseHelper.getFeedSources()
 
-        val readingListResult = if (usesItemIdsSync()) {
-            fetchContentWithItemIds(
-                stream = Stream.ReadingList(),
-                excludedStream = Stream.Read(),
-                since = lastUpdate,
-                feedSources = feedSources,
-            )
-        } else {
-            fetchContent(
-                block = { continuation ->
-                    gReaderClient.getItems(
-                        continuation = continuation,
-                        lastModified = lastUpdate,
-                        excludeTargets = listOf(
-                            Stream.Read().id,
-                            Stream.Starred().id,
-                        ),
-                        max = PAGE_SIZE,
-                    )
-                },
-                feedSources = feedSources,
-            )
-        }
-        if (readingListResult.isError()) {
-            return@withContext readingListResult
-        }
-
-        val starredResult = if (usesItemIdsSync()) {
-            fetchContentWithItemIds(
-                stream = Stream.Starred(),
-                since = lastUpdate,
-                feedSources = feedSources,
-            )
-        } else {
-            fetchContent(
-                block = { continuation ->
-                    gReaderClient.getStarredItemsContent(
+            val readingListResult =
+                if (usesItemIdsSync()) {
+                    fetchContentWithItemIds(
+                        stream = Stream.ReadingList(),
+                        excludedStream = Stream.Read(),
                         since = lastUpdate,
-                        maxNumber = PAGE_SIZE,
-                        continuation = continuation,
+                        feedSources = feedSources,
                     )
-                },
-                feedSources = feedSources,
-            )
-        }
-        if (starredResult.isError()) {
-            return@withContext starredResult
-        }
-
-        parZip(
-            ctx = dispatcherProvider.io,
-            { fetchStarredItems() },
-            { fetchUnreadItems() },
-        ) { starredItemsResult, unreadItemsResult ->
-            val results = starredItemsResult + unreadItemsResult
-
-            if (results.allSuccess()) {
-                databaseHelper.updateFeedItemReadStatus(
-                    unreadItemsResult.requireSuccess().map { it.getHexID() },
-                )
-                databaseHelper.updateFeedItemBookmarkStatus(
-                    starredItemsResult.requireSuccess().map { it.getHexID() },
-                )
-            } else {
-                return@parZip results.firstError()?.error()
+                } else {
+                    fetchContent(
+                        block = { continuation ->
+                            gReaderClient.getItems(
+                                continuation = continuation,
+                                lastModified = lastUpdate,
+                                excludeTargets =
+                                    listOf(
+                                        Stream.Read().id,
+                                        Stream.Starred().id,
+                                    ),
+                                max = PAGE_SIZE,
+                            )
+                        },
+                        feedSources = feedSources,
+                    )
+                }
+            if (readingListResult.isError()) {
+                return@withContext readingListResult
             }
-        }
 
-        // Stamp every source, not only those that returned items, so a source's first real article
-        // after this sync is not mistaken for its back-catalog.
-        databaseHelper.updateLastSyncTimestamps(
-            feedSourceIds = feedSources.map { it.id },
-            lastSyncTimestamp = dateFormatter.currentTimeMillis(),
-        )
-        networkSettings.setLastSyncDate(Clock.System.now().epochSeconds)
-        return@withContext Unit.success()
-    }
+            val starredResult =
+                if (usesItemIdsSync()) {
+                    fetchContentWithItemIds(
+                        stream = Stream.Starred(),
+                        since = lastUpdate,
+                        feedSources = feedSources,
+                    )
+                } else {
+                    fetchContent(
+                        block = { continuation ->
+                            gReaderClient.getStarredItemsContent(
+                                since = lastUpdate,
+                                maxNumber = PAGE_SIZE,
+                                continuation = continuation,
+                            )
+                        },
+                        feedSources = feedSources,
+                    )
+                }
+            if (starredResult.isError()) {
+                return@withContext starredResult
+            }
+
+            parZip(
+                ctx = dispatcherProvider.io,
+                { fetchStarredItems() },
+                { fetchUnreadItems() },
+            ) { starredItemsResult, unreadItemsResult ->
+                val results = starredItemsResult + unreadItemsResult
+
+                if (results.allSuccess()) {
+                    databaseHelper.updateFeedItemReadStatus(
+                        unreadItemsResult.requireSuccess().map { it.getHexID() },
+                    )
+                    databaseHelper.updateFeedItemBookmarkStatus(
+                        starredItemsResult.requireSuccess().map { it.getHexID() },
+                    )
+                } else {
+                    return@parZip results.firstError()?.error()
+                }
+            }
+
+            // Stamp every source, not only those that returned items, so a source's first real article
+            // after this sync is not mistaken for its back-catalog.
+            databaseHelper.updateLastSyncTimestamps(
+                feedSourceIds = feedSources.map { it.id },
+                lastSyncTimestamp = dateFormatter.currentTimeMillis(),
+            )
+            networkSettings.setLastSyncDate(Clock.System.now().epochSeconds)
+            return@withContext Unit.success()
+        }
 
     suspend fun updateFavicons() =
         withContext(dispatcherProvider.io) {
             // Singleton: without this the first lookup of a domain answers for the whole process.
             feedSourceLogoRetriever.invalidateLookupCaches()
             gReaderClient.getFeedSourcesAndCategories().onSuccessSuspend { results ->
-                val urlMaps = results.subscriptions.map { source ->
-                    source.id to feedSourceLogoRetriever.getFeedSourceLogoUrl(source.htmlUrl)
-                }
+                val urlMaps =
+                    results.subscriptions.map { source ->
+                        source.id to feedSourceLogoRetriever.getFeedSourceLogoUrl(source.htmlUrl)
+                    }
                 databaseHelper.updateFeedSourceLogoUrls(urlMaps)
             }
         }
@@ -191,15 +200,19 @@ class GReaderRepository internal constructor(
         databaseHelper.deleteAll()
     }
 
-    suspend fun updateBookmarkStatus(feedItemId: FeedItemId, isBookmarked: Boolean): DataResult<Unit> {
+    suspend fun updateBookmarkStatus(
+        feedItemId: FeedItemId,
+        isBookmarked: Boolean,
+    ): DataResult<Unit> {
         val addTag = if (isBookmarked) Stream.Starred() else null
         val removeTag = if (isBookmarked) null else Stream.Starred()
 
-        val result = gReaderClient.editTag(
-            itemIds = formatItemIdsForTagging(listOf(feedItemId)),
-            addTag = addTag,
-            removeTag = removeTag,
-        )
+        val result =
+            gReaderClient.editTag(
+                itemIds = formatItemIdsForTagging(listOf(feedItemId)),
+                addTag = addTag,
+                removeTag = removeTag,
+            )
         if (result.isError()) {
             return result
         }
@@ -208,15 +221,19 @@ class GReaderRepository internal constructor(
         return Unit.success()
     }
 
-    suspend fun updateReadStatus(feedItemIds: List<FeedItemId>, isRead: Boolean): DataResult<Unit> {
+    suspend fun updateReadStatus(
+        feedItemIds: List<FeedItemId>,
+        isRead: Boolean,
+    ): DataResult<Unit> {
         val addTag = if (isRead) Stream.Read() else null
         val removeTag = if (isRead) null else Stream.Read()
 
-        val result = gReaderClient.editTag(
-            itemIds = formatItemIdsForTagging(feedItemIds),
-            addTag = addTag,
-            removeTag = removeTag,
-        )
+        val result =
+            gReaderClient.editTag(
+                itemIds = formatItemIdsForTagging(feedItemIds),
+                addTag = addTag,
+                removeTag = removeTag,
+            )
         if (result.isError()) {
             return result
         }
@@ -254,10 +271,11 @@ class GReaderRepository internal constructor(
     }
 
     suspend fun deleteFeedSource(feedSourceId: String): DataResult<Unit> {
-        val result = gReaderClient.editSubscription(
-            feedSourceId = feedSourceId,
-            editAction = SubscriptionEditAction.UNSUBSCRIBE,
-        )
+        val result =
+            gReaderClient.editSubscription(
+                feedSourceId = feedSourceId,
+                editAction = SubscriptionEditAction.UNSUBSCRIBE,
+            )
         if (result.isError()) {
             return result
         }
@@ -267,11 +285,13 @@ class GReaderRepository internal constructor(
     }
 
     suspend fun fetchFeedSourcesAndCategories(): DataResult<Unit> =
-        gReaderClient.getFeedSourcesAndCategories()
+        gReaderClient
+            .getFeedSourcesAndCategories()
             .map { response ->
-                val feedSources = response.subscriptions.map { subscription ->
-                    subscription.toFeedSource()
-                }
+                val feedSources =
+                    response.subscriptions.map { subscription ->
+                        subscription.toFeedSource()
+                    }
                 val categories = feedSources.mapNotNull { it.category }
 
                 databaseHelper.insertCategories(categories)
@@ -297,11 +317,12 @@ class GReaderRepository internal constructor(
 
         databaseHelper.updateNotificationEnabledStatus(feedSourceDTO.streamId, isNotificationEnabled)
 
-        val categoryResult = gReaderClient.editSubscription(
-            feedSourceId = feedSourceDTO.streamId,
-            editAction = SubscriptionEditAction.EDIT,
-            addCategoryId = categoryName?.id,
-        )
+        val categoryResult =
+            gReaderClient.editSubscription(
+                feedSourceId = feedSourceDTO.streamId,
+                editAction = SubscriptionEditAction.EDIT,
+                addCategoryId = categoryName?.id,
+            )
         if (categoryResult.isError()) {
             return categoryResult
         }
@@ -313,17 +334,19 @@ class GReaderRepository internal constructor(
         newFeedSource: FeedSource,
         originalFeedSource: FeedSource?,
     ): DataResult<Unit> {
-        val categoryUpdate = buildCategoryUpdate(
-            originalCategory = originalFeedSource?.category,
-            newCategory = newFeedSource.category,
-        )
-        val result = gReaderClient.editSubscription(
-            feedSourceId = newFeedSource.id,
-            editAction = SubscriptionEditAction.EDIT,
-            title = newFeedSource.title,
-            addCategoryId = categoryUpdate.addCategoryId,
-            removeCategoryId = categoryUpdate.removeCategoryId,
-        )
+        val categoryUpdate =
+            buildCategoryUpdate(
+                originalCategory = originalFeedSource?.category,
+                newCategory = newFeedSource.category,
+            )
+        val result =
+            gReaderClient.editSubscription(
+                feedSourceId = newFeedSource.id,
+                editAction = SubscriptionEditAction.EDIT,
+                title = newFeedSource.title,
+                addCategoryId = categoryUpdate.addCategoryId,
+                removeCategoryId = categoryUpdate.removeCategoryId,
+            )
         if (result.isError()) {
             return result
         }
@@ -337,11 +360,12 @@ class GReaderRepository internal constructor(
         feedSourceId: String,
         newName: String,
     ): DataResult<Unit> {
-        val result = gReaderClient.editSubscription(
-            feedSourceId = feedSourceId,
-            editAction = SubscriptionEditAction.EDIT,
-            title = newName,
-        )
+        val result =
+            gReaderClient.editSubscription(
+                feedSourceId = feedSourceId,
+                editAction = SubscriptionEditAction.EDIT,
+                title = newName,
+            )
         if (result.isError()) {
             return result
         }
@@ -350,12 +374,16 @@ class GReaderRepository internal constructor(
         return Unit.success()
     }
 
-    suspend fun editCategoryName(categoryId: CategoryId, newName: CategoryName): DataResult<Unit> {
+    suspend fun editCategoryName(
+        categoryId: CategoryId,
+        newName: CategoryName,
+    ): DataResult<Unit> {
         val newCategoryId = buildCategoryId(categoryId, newName)
-        val result = gReaderClient.renameTag(
-            old = categoryId.value,
-            new = newCategoryId,
-        )
+        val result =
+            gReaderClient.renameTag(
+                old = categoryId.value,
+                new = newCategoryId,
+            )
         if (result.isError()) {
             return result
         }
@@ -370,10 +398,11 @@ class GReaderRepository internal constructor(
     private suspend fun fetchStarredItems(): DataResult<List<ItemDTO>> {
         logger.d { "Fetching starred items" }
 
-        val result = gReaderClient.getStreamItemsIDs(
-            count = PAGE_SIZE * MAX_PAGES,
-            stream = Stream.Starred(),
-        )
+        val result =
+            gReaderClient.getStreamItemsIDs(
+                count = PAGE_SIZE * MAX_PAGES,
+                stream = Stream.Starred(),
+            )
 
         logger.d { "Result: $result" }
 
@@ -388,11 +417,12 @@ class GReaderRepository internal constructor(
     private suspend fun fetchUnreadItems(): DataResult<List<ItemDTO>> {
         logger.d { "Fetching unread items" }
 
-        val result = gReaderClient.getStreamItemsIDs(
-            stream = Stream.ReadingList(),
-            excludedStream = Stream.Read(),
-            count = PAGE_SIZE * MAX_PAGES,
-        )
+        val result =
+            gReaderClient.getStreamItemsIDs(
+                stream = Stream.ReadingList(),
+                excludedStream = Stream.Read(),
+                count = PAGE_SIZE * MAX_PAGES,
+            )
 
         if (result.isError()) {
             logger.d { "Failed to fetch unread items: $result" }
@@ -430,15 +460,17 @@ class GReaderRepository internal constructor(
             }
         } while (currentContinuation != null && count < MAX_PAGES)
 
-        val feedItems = itemsToSave.mapNotNull { item ->
-            val feedSource = feedSources.firstOrNull {
-                it.id == item.origin.streamId
-            } ?: return@mapNotNull null
-            itemContentDTOMapper.mapToFeedItem(
-                itemContentDTO = item,
-                feedSource = feedSource,
-            )
-        }
+        val feedItems =
+            itemsToSave.mapNotNull { item ->
+                val feedSource =
+                    feedSources.firstOrNull {
+                        it.id == item.origin.streamId
+                    } ?: return@mapNotNull null
+                itemContentDTOMapper.mapToFeedItem(
+                    itemContentDTO = item,
+                    feedSource = feedSource,
+                )
+            }
         databaseHelper.insertFeedItems(
             feedItems = feedItems,
             lastSyncTimestamp = dateFormatter.currentTimeMillis(),
@@ -460,13 +492,14 @@ class GReaderRepository internal constructor(
             return idsResult.failure.error()
         }
 
-        var itemIds = idsResult.requireSuccess().map { item ->
-            if (isBazquxAccount()) {
-                item.id
-            } else {
-                item.getHexID()
+        var itemIds =
+            idsResult.requireSuccess().map { item ->
+                if (isBazquxAccount()) {
+                    item.id
+                } else {
+                    item.getHexID()
+                }
             }
-        }
         if (itemIds.isEmpty() && since != null && !databaseHelper.hasFeedItems()) {
             logger.d { "No items with since filter and empty DB; retrying without since" }
             idsResult = fetchItemIds(stream = stream, excludedStream = excludedStream, since = null)
@@ -474,13 +507,14 @@ class GReaderRepository internal constructor(
                 logger.d { "Failed to fetch item IDs without since: $idsResult" }
                 return idsResult.failure.error()
             }
-            itemIds = idsResult.requireSuccess().map { item ->
-                if (isBazquxAccount()) {
-                    item.id
-                } else {
-                    item.getHexID()
+            itemIds =
+                idsResult.requireSuccess().map { item ->
+                    if (isBazquxAccount()) {
+                        item.id
+                    } else {
+                        item.getHexID()
+                    }
                 }
-            }
         }
         if (itemIds.isEmpty()) {
             return Unit.success()
@@ -498,15 +532,17 @@ class GReaderRepository internal constructor(
             }
         }
 
-        val feedItems = itemsToSave.mapNotNull { item ->
-            val feedSource = feedSources.firstOrNull {
-                it.id == item.origin.streamId
-            } ?: return@mapNotNull null
-            itemContentDTOMapper.mapToFeedItem(
-                itemContentDTO = item,
-                feedSource = feedSource,
-            )
-        }
+        val feedItems =
+            itemsToSave.mapNotNull { item ->
+                val feedSource =
+                    feedSources.firstOrNull {
+                        it.id == item.origin.streamId
+                    } ?: return@mapNotNull null
+                itemContentDTOMapper.mapToFeedItem(
+                    itemContentDTO = item,
+                    feedSource = feedSource,
+                )
+            }
         databaseHelper.insertFeedItems(
             feedItems = feedItems,
             lastSyncTimestamp = dateFormatter.currentTimeMillis(),
@@ -526,13 +562,14 @@ class GReaderRepository internal constructor(
         val items = mutableListOf<ItemDTO>()
 
         do {
-            val result = gReaderClient.getStreamItemsIDs(
-                stream = stream,
-                since = since,
-                continuation = continuation,
-                count = PAGE_SIZE,
-                excludedStream = excludedStream,
-            )
+            val result =
+                gReaderClient.getStreamItemsIDs(
+                    stream = stream,
+                    since = since,
+                    continuation = continuation,
+                    count = PAGE_SIZE,
+                    excludedStream = excludedStream,
+                )
 
             if (result.isError()) {
                 return result.failure.error()
@@ -554,15 +591,13 @@ class GReaderRepository internal constructor(
             .map { it.split("=") }
             .associate {
                 it.first() to it.last()
-            }
-            .getOrElse("Auth") { null }
+            }.getOrElse("Auth") { null }
 
     private fun usesItemIdsSync(): Boolean =
         networkSettings.getSyncAccountType() == SyncAccounts.MINIFLUX ||
             networkSettings.getSyncAccountType() == SyncAccounts.BAZQUX
 
-    private fun isBazquxAccount(): Boolean =
-        networkSettings.getSyncAccountType() == SyncAccounts.BAZQUX
+    private fun isBazquxAccount(): Boolean = networkSettings.getSyncAccountType() == SyncAccounts.BAZQUX
 
     private fun formatItemIdsForTagging(feedItemIds: List<FeedItemId>): List<String> {
         if (!isBazquxAccount()) {
@@ -579,16 +614,19 @@ class GReaderRepository internal constructor(
         }
     }
 
-    fun buildCategoryId(categoryName: CategoryName): String =
-        "user/-/label/${categoryName.name}"
+    fun buildCategoryId(categoryName: CategoryName): String = "user/-/label/${categoryName.name}"
 
-    private fun buildCategoryId(categoryId: CategoryId, newName: CategoryName): String {
+    private fun buildCategoryId(
+        categoryId: CategoryId,
+        newName: CategoryName,
+    ): String {
         val existingPrefix = categoryId.value.substringBefore("/label/")
-        val userPrefix = if (categoryId.value.contains("/label/")) {
-            existingPrefix
-        } else {
-            "user/-"
-        }
+        val userPrefix =
+            if (categoryId.value.contains("/label/")) {
+                existingPrefix
+            } else {
+                "user/-"
+            }
         return "$userPrefix/label/${newName.name}"
     }
 

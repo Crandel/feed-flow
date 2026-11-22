@@ -46,6 +46,7 @@ include("feedSync:icloud")
 include("feedSync:ikloud-macos")
 include("feedSync:greader")
 include("feedSync:feedbin")
+include("feedSync:folder")
 include("feedSync:networkcore")
 include("feedSync:test-utils")
 

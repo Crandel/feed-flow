@@ -12,35 +12,45 @@ plugins {
     id("com.feedflow.cloud-sync-tests")
 }
 
-val generateArticleReportBuildInfo = tasks.register("generateArticleReportBuildInfo") {
-    val parserVersion = libs.versions.klead
-    inputs.property("parserVersion", parserVersion)
-    val outputDirectory = layout.buildDirectory.dir("generated/article-report/commonMain/kotlin")
-    outputs.dir(outputDirectory)
-    doLast {
-        val output = outputDirectory.get().file(
-            "com/prof18/feedflow/shared/domain/articlereport/ArticleReportBuildInfo.kt",
-        ).asFile
-        output.parentFile.mkdirs()
-        output.writeText(
-            """
-            package com.prof18.feedflow.shared.domain.articlereport
+val generateArticleReportBuildInfo =
+    tasks.register("generateArticleReportBuildInfo") {
+        val parserVersion = libs.versions.klead
+        inputs.property("parserVersion", parserVersion)
+        val outputDirectory = layout.buildDirectory.dir("generated/article-report/commonMain/kotlin")
+        outputs.dir(outputDirectory)
+        doLast {
+            val output =
+                outputDirectory
+                    .get()
+                    .file(
+                        "com/prof18/feedflow/shared/domain/articlereport/ArticleReportBuildInfo.kt",
+                    ).asFile
+            output.parentFile.mkdirs()
+            output.writeText(
+                """
+                package com.prof18.feedflow.shared.domain.articlereport
 
-            internal object ArticleReportBuildInfo {
-                const val PARSER_VERSION = "${parserVersion.get()}"
-            }
-            """.trimIndent() + "\n",
-        )
+                internal object ArticleReportBuildInfo {
+                    const val PARSER_VERSION = "${parserVersion.get()}"
+                }
+                """.trimIndent() + "\n",
+            )
+        }
     }
-}
 
 kotlin {
     jvmToolchain(21)
 
     android {
         namespace = "com.prof18.feedflow.shared"
-        compileSdk = libs.versions.android.compile.sdk.get().toInt()
-        minSdk = libs.versions.android.min.sdk.get().toInt()
+        compileSdk =
+            libs.versions.android.compile.sdk
+                .get()
+                .toInt()
+        minSdk =
+            libs.versions.android.min.sdk
+                .get()
+                .toInt()
         compilerOptions.jvmTarget = JvmTarget.JVM_21
 
         withHostTest {}
@@ -110,6 +120,7 @@ kotlin {
                 implementation(project(":feedSync:greader"))
                 implementation(project(":feedSync:networkcore"))
                 implementation(project(":feedSync:feedbin"))
+                implementation(project(":feedSync:folder"))
                 implementation(project.dependencies.platform(libs.koin.bom))
                 implementation(libs.koin.core)
                 implementation(libs.koin.core.vm)
@@ -150,33 +161,37 @@ kotlin {
             }
         }
 
-        val commonJvmAndroidMain = create("commonJvmAndroidMain") {
-            dependsOn(commonMain.get())
+        val commonJvmAndroidMain =
+            create("commonJvmAndroidMain") {
+                dependsOn(commonMain.get())
 
-            dependencies {
-                implementation(libs.ktor.client.okhttp)
+                dependencies {
+                    implementation(libs.ktor.client.okhttp)
+                }
             }
-        }
 
-        val commonJvmAndroidTest = create("commonJvmAndroidTest") {
-            dependsOn(commonTest.get())
+        val commonJvmAndroidTest =
+            create("commonJvmAndroidTest") {
+                dependsOn(commonTest.get())
 
-            dependencies {
-                implementation(libs.kotlin.test.junit)
+                dependencies {
+                    implementation(libs.kotlin.test.junit)
+                }
             }
-        }
 
-        val androidTest = create("androidTest") {
-            dependsOn(commonJvmAndroidTest)
+        val androidTest =
+            create("androidTest") {
+                dependsOn(commonJvmAndroidTest)
 
-            dependencies {
-                implementation(libs.androidx.test.core.ktx)
+                dependencies {
+                    implementation(libs.androidx.test.core.ktx)
+                }
             }
-        }
 
-        val commonMobileMain = create("commonMobileMain") {
-            dependsOn(commonMain.get())
-        }
+        val commonMobileMain =
+            create("commonMobileMain") {
+                dependsOn(commonMain.get())
+            }
 
         androidMain {
             dependsOn(commonJvmAndroidMain)
@@ -244,9 +259,10 @@ kotlin {
 }
 
 // Configure TEST_RESOURCES_ROOT for JVM and iOS tests
-val testResourcesDir = project(":feedSync:test-utils")
-    .file("src/commonMain/resources")
-    .absolutePath
+val testResourcesDir =
+    project(":feedSync:test-utils")
+        .file("src/commonMain/resources")
+        .absolutePath
 
 tasks.withType<Test>().configureEach {
     environment("TEST_RESOURCES_ROOT", testResourcesDir)

@@ -143,6 +143,9 @@ struct AccountsScreenContent: View {
                 }    
                 .accessibilityIdentifier(AccountAccessibilityIdentifiers.provider("feedbin"))
 
+            case .folder:
+                EmptyView()
+
             case .local:
                 EmptyView()
             }

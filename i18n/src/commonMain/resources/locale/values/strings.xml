@@ -203,6 +203,7 @@
     <string name="desktop_accounts_miniflux_title">Miniflux</string>
     <string name="desktop_accounts_bazqux_title">BazQux</string>
     <string name="desktop_accounts_feedbin_title">Feedbin</string>
+    <string name="desktop_accounts_folder_title">Folder</string>
     <string name="settings_help_title">Help</string>
     <string name="settings_crash_reporting">Send anonymous crash reports</string>
     <string name="account_connect_button">Connect</string>

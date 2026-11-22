@@ -54,7 +54,6 @@ internal class FeedSyncAndroidWorker(
     private val settingsRepository: SettingsRepository,
     private val accountsRepository: AccountsRepository,
 ) : FeedSyncWorker {
-
     private val mutex = Mutex()
     private var downloadSession: String? = null
     private var dropboxRevision: String? = null
@@ -66,79 +65,89 @@ internal class FeedSyncAndroidWorker(
 
     override fun upload() {
         logger.d { "Enqueue upload" }
-        val uploadWorkRequest: WorkRequest = OneTimeWorkRequestBuilder<SyncWorkManager>()
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
-            )
-            .build()
+        val uploadWorkRequest: WorkRequest =
+            OneTimeWorkRequestBuilder<SyncWorkManager>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setConstraints(
+                    Constraints
+                        .Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                ).build()
 
         WorkManager.getInstance(context).enqueue(uploadWorkRequest)
     }
 
-    internal suspend fun performUpload(): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            var snapshot: File? = null
-            try {
-                val uploadSession = requireNotNull(pendingCloudChanges.sessionForEdit())
-                retryDropboxConflicts {
-                    snapshot?.delete()
-                    snapshot = null
-                    val uploadAccount = accountsRepository.getCurrentSyncAccount()
-                    val result = downloadLocked(
-                        expectedSession = uploadSession,
-                    )
-                    pendingCloudChanges.checkAccountSession(uploadSession)
-                    when {
-                        result is SyncResult.BackupNotFound -> feedSyncer.prepareInitialUpload()
-                        result.isError() -> {
-                            feedSyncMessageQueue.emitResult(result)
-                            return@withLock result
+    internal suspend fun performUpload(): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                var snapshot: File? = null
+                try {
+                    val uploadSession = requireNotNull(pendingCloudChanges.sessionForEdit())
+                    retryDropboxConflicts {
+                        snapshot?.delete()
+                        snapshot = null
+                        val uploadAccount = accountsRepository.getCurrentSyncAccount()
+                        val result =
+                            downloadLocked(
+                                expectedSession = uploadSession,
+                            )
+                        pendingCloudChanges.checkAccountSession(uploadSession)
+                        when {
+                            result is SyncResult.BackupNotFound -> {
+                                feedSyncer.prepareInitialUpload()
+                            }
+
+                            result.isError() -> {
+                                feedSyncMessageQueue.emitResult(result)
+                                return@withLock result
+                            }
                         }
+                        if (uploadAccount == SyncAccounts.DROPBOX && result !is SyncResult.BackupNotFound) {
+                            requireNotNull(dropboxRevision) { "Dropbox download did not return a revision" }
+                        }
+                        val pendingBatch = pendingCloudChanges.capturePendingChanges()
+                        val uploadGeneration = settingsRepository.captureSyncUploadGeneration()
+                        pendingCloudChanges.applyChangesToSyncDatabase(pendingBatch)
+                        snapshot = File.createTempFile("cloud-upload-", ".db", File(databasePath()).parentFile)
+                        feedSyncer.withClosedDatabase {
+                            File(databasePath()).copyTo(requireNotNull(snapshot), overwrite = true)
+                        }
+                        pendingCloudChanges.checkAccountSession(uploadSession)
+                        accountSpecificUpload(requireNotNull(snapshot), uploadAccount)
+                        emitSuccessMessage()
+                        pendingCloudChanges.markChangesAsUploaded(pendingBatch)
+                        settingsRepository.acknowledgeSyncUpload(uploadGeneration)
+                        return@withContext SyncResult.Success
                     }
-                    if (uploadAccount == SyncAccounts.DROPBOX && result !is SyncResult.BackupNotFound) {
-                        requireNotNull(dropboxRevision) { "Dropbox download did not return a revision" }
-                    }
-                    val pendingBatch = pendingCloudChanges.capturePendingChanges()
-                    val uploadGeneration = settingsRepository.captureSyncUploadGeneration()
-                    pendingCloudChanges.applyChangesToSyncDatabase(pendingBatch)
-                    snapshot = File.createTempFile("cloud-upload-", ".db", File(databasePath()).parentFile)
-                    feedSyncer.withClosedDatabase {
-                        File(databasePath()).copyTo(requireNotNull(snapshot), overwrite = true)
-                    }
-                    pendingCloudChanges.checkAccountSession(uploadSession)
-                    accountSpecificUpload(requireNotNull(snapshot), uploadAccount)
-                    emitSuccessMessage()
-                    pendingCloudChanges.markChangesAsUploaded(pendingBatch)
-                    settingsRepository.acknowledgeSyncUpload(uploadGeneration)
-                    return@withContext SyncResult.Success
+                } catch (e: GoogleDriveNeedsReAuthException) {
+                    logger.e("Google Drive needs re-authorization", e)
+                    SyncResult.GoogleDriveNeedReAuth()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Upload failed", e)
+                    emitErrorMessage(SyncUploadError.DropboxUploadFailed)
+                    return@withLock SyncResult.General(SyncUploadError.DropboxUploadFailed)
+                } finally {
+                    snapshot?.delete()
                 }
-            } catch (e: GoogleDriveNeedsReAuthException) {
-                logger.e("Google Drive needs re-authorization", e)
-                SyncResult.GoogleDriveNeedReAuth()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Upload failed", e)
-                emitErrorMessage(SyncUploadError.DropboxUploadFailed)
-                return@withLock SyncResult.General(SyncUploadError.DropboxUploadFailed)
-            } finally {
-                snapshot?.delete()
             }
         }
-    }
 
-    private suspend fun accountSpecificUpload(databaseFile: File, account: SyncAccounts) {
+    private suspend fun accountSpecificUpload(
+        databaseFile: File,
+        account: SyncAccounts,
+    ) {
         when (account) {
             SyncAccounts.DROPBOX -> {
                 restoreDropboxClient()
-                val dropboxUploadParam = DropboxUploadParam(
-                    path = "/${getDatabaseNameWithExtension()}",
-                    file = databaseFile,
-                    expectedRevision = dropboxRevision,
-                )
+                val dropboxUploadParam =
+                    DropboxUploadParam(
+                        path = "/${getDatabaseNameWithExtension()}",
+                        file = databaseFile,
+                        expectedRevision = dropboxRevision,
+                    )
                 val result = dropboxDataSource.performUpload(dropboxUploadParam)
                 if (result.isConflict) throw DropboxUploadConflictException()
                 dropboxSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
@@ -146,10 +155,11 @@ internal class FeedSyncAndroidWorker(
             }
 
             SyncAccounts.GOOGLE_DRIVE -> {
-                val googleDriveUploadParam = GoogleDriveUploadParam(
-                    fileName = getDatabaseNameWithExtension(),
-                    file = databaseFile,
-                )
+                val googleDriveUploadParam =
+                    GoogleDriveUploadParam(
+                        fileName = getDatabaseNameWithExtension(),
+                        file = databaseFile,
+                    )
                 googleDriveDataSource.performUpload(googleDriveUploadParam)
                 googleDriveSettings.setLastUploadTimestamp(Clock.System.now().toEpochMilliseconds())
                 logger.d { "Upload to Google Drive successfully" }
@@ -161,19 +171,19 @@ internal class FeedSyncAndroidWorker(
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
+            SyncAccounts.FOLDER,
             -> {
                 // Do nothing
             }
         }
     }
 
-    override suspend fun download(isFirstSync: Boolean): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock { downloadLocked() }
-    }
+    override suspend fun download(isFirstSync: Boolean): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock { downloadLocked() }
+        }
 
-    private suspend fun downloadLocked(
-        expectedSession: String? = null,
-    ): SyncResult {
+    private suspend fun downloadLocked(expectedSession: String? = null): SyncResult {
         var stagedFile: File? = null
         return try {
             dropboxRevision = null
@@ -197,17 +207,19 @@ internal class FeedSyncAndroidWorker(
         }
     }
 
-    private suspend fun accountSpecificDownload(stagedFile: File): SyncResult {
-        return when (accountsRepository.getCurrentSyncAccount()) {
+    private suspend fun accountSpecificDownload(stagedFile: File): SyncResult =
+        when (accountsRepository.getCurrentSyncAccount()) {
             SyncAccounts.DROPBOX -> {
                 restoreDropboxClient()
-                val dropboxDownloadParam = DropboxDownloadParam(
-                    path = "/${getDatabaseNameWithExtension()}",
-                    outputStream = FileOutputStream(stagedFile),
-                )
-                val result = dropboxDownloadParam.outputStream.use {
-                    dropboxDataSource.performDownload(dropboxDownloadParam)
-                }
+                val dropboxDownloadParam =
+                    DropboxDownloadParam(
+                        path = "/${getDatabaseNameWithExtension()}",
+                        outputStream = FileOutputStream(stagedFile),
+                    )
+                val result =
+                    dropboxDownloadParam.outputStream.use {
+                        dropboxDataSource.performDownload(dropboxDownloadParam)
+                    }
                 dropboxRevision = result.revision
                 installDownloadedFile(stagedFile)
                 dropboxSettings.setLastDownloadTimestamp(Clock.System.now().toEpochMilliseconds())
@@ -216,10 +228,11 @@ internal class FeedSyncAndroidWorker(
             }
 
             SyncAccounts.GOOGLE_DRIVE -> {
-                val googleDriveDownloadParam = GoogleDriveDownloadParam(
-                    fileName = getDatabaseNameWithExtension(),
-                    outputStream = FileOutputStream(stagedFile),
-                )
+                val googleDriveDownloadParam =
+                    GoogleDriveDownloadParam(
+                        fileName = getDatabaseNameWithExtension(),
+                        outputStream = FileOutputStream(stagedFile),
+                    )
                 googleDriveDownloadParam.outputStream.use {
                     googleDriveDataSource.performDownload(googleDriveDownloadParam)
                 }
@@ -235,40 +248,42 @@ internal class FeedSyncAndroidWorker(
             SyncAccounts.MINIFLUX,
             SyncAccounts.BAZQUX,
             SyncAccounts.FEEDBIN,
+            SyncAccounts.FOLDER,
             -> {
                 SyncResult.Success
             }
         }
-    }
 
-    override suspend fun syncFeedSources(): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            try {
-                feedSyncer.syncFeedSourceCategory(downloadSession)
-                feedSyncer.syncFeedSource()
-                SyncResult.Success
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Sync feed sources failed", e)
-                SyncResult.General(SyncFeedError.FeedSourcesSyncFailed)
+    override suspend fun syncFeedSources(): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                try {
+                    feedSyncer.syncFeedSourceCategory(downloadSession)
+                    feedSyncer.syncFeedSource()
+                    SyncResult.Success
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Sync feed sources failed", e)
+                    SyncResult.General(SyncFeedError.FeedSourcesSyncFailed)
+                }
             }
         }
-    }
 
-    override suspend fun syncFeedItems(): SyncResult = withContext(dispatcherProvider.io) {
-        mutex.withLock {
-            try {
-                feedSyncer.syncFeedItem(downloadSession)
-                SyncResult.Success
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Sync feed items failed", e)
-                SyncResult.General(SyncFeedError.FeedItemsSyncFailed)
+    override suspend fun syncFeedItems(): SyncResult =
+        withContext(dispatcherProvider.io) {
+            mutex.withLock {
+                try {
+                    feedSyncer.syncFeedItem(downloadSession)
+                    SyncResult.Success
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Sync feed items failed", e)
+                    SyncResult.General(SyncFeedError.FeedItemsSyncFailed)
+                }
             }
         }
-    }
 
     private suspend fun installDownloadedFile(stagedFile: File) {
         prepareSyncDatabaseFile(context, stagedFile)
@@ -302,9 +317,7 @@ internal class FeedSyncAndroidWorker(
 
     private fun getDatabaseNameWithExtension(): String = syncDatabaseFileProvider.remoteFileName
 
-    private suspend fun emitErrorMessage(errorCode: ErrorCode) =
-        feedSyncMessageQueue.emitResult(SyncResult.General(errorCode))
+    private suspend fun emitErrorMessage(errorCode: ErrorCode) = feedSyncMessageQueue.emitResult(SyncResult.General(errorCode))
 
-    private suspend fun emitSuccessMessage() =
-        feedSyncMessageQueue.emitResult(SyncResult.Success)
+    private suspend fun emitSuccessMessage() = feedSyncMessageQueue.emitResult(SyncResult.Success)
 }

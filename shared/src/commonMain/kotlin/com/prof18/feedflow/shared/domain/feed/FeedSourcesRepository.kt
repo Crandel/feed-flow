@@ -60,42 +60,46 @@ internal class FeedSourcesRepository(
     private val settingsRepository: SettingsRepository,
     private val recoveryRepository: FeedRecoveryRepository,
 ) {
-    private val knownUrlSuffix = listOf(
-        "",
-        "feed",
-        "feed/",
-        "feed.rss",
-        "rss",
-        "rss/",
-        "rss.xml",
-        "feed.xml",
-        "index.xml",
-        "index.rss",
-        "atom",
-        "atom.xml",
-        "atom.json",
-        "feed.json",
-        "rss.json",
-        "index.json",
-    )
+    private val knownUrlSuffix =
+        listOf(
+            "",
+            "feed",
+            "feed/",
+            "feed.rss",
+            "rss",
+            "rss/",
+            "rss.xml",
+            "feed.xml",
+            "index.xml",
+            "index.rss",
+            "atom",
+            "atom.xml",
+            "atom.json",
+            "feed.json",
+            "rss.json",
+            "index.json",
+        )
 
-    fun getFeedSources(): Flow<List<FeedSource>> =
-        databaseHelper.getFeedSourcesFlow()
+    fun getFeedSources(): Flow<List<FeedSource>> = databaseHelper.getFeedSourcesFlow()
 
-    fun getFeedSourcesWithUnreadCount(): Flow<List<FeedSourceWithUnreadCount>> =
-        databaseHelper.getFeedSourcesWithUnreadCountFlow()
+    fun getFeedSourcesWithUnreadCount(): Flow<List<FeedSourceWithUnreadCount>> = databaseHelper.getFeedSourcesWithUnreadCountFlow()
 
-    suspend fun deleteFeed(feedSource: FeedSource, backUp: Boolean = true) {
+    suspend fun deleteFeed(
+        feedSource: FeedSource,
+        backUp: Boolean = true,
+    ) {
         when (accountsRepository.getCurrentSyncAccount()) {
             SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                gReaderRepository.deleteFeedSource(feedSource.id)
+                gReaderRepository
+                    .deleteFeedSource(feedSource.id)
                     .onErrorSuspend {
                         feedStateRepository.emitErrorState(SyncError(FeedSyncError.DeleteFeedSourceFailed))
                     }
             }
 
             SyncAccounts.FEEDBIN -> {
-                feedbinRepository.deleteFeedSource(feedSource.id)
+                feedbinRepository
+                    .deleteFeedSource(feedSource.id)
                     .onErrorSuspend {
                         feedStateRepository.emitErrorState(SyncError(FeedSyncError.DeleteFeedSourceFailed))
                     }
@@ -105,6 +109,7 @@ internal class FeedSourcesRepository(
             SyncAccounts.DROPBOX,
             SyncAccounts.GOOGLE_DRIVE,
             SyncAccounts.ICLOUD,
+            SyncAccounts.FOLDER,
             -> {
                 val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                 val withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId)
@@ -138,12 +143,13 @@ internal class FeedSourcesRepository(
             settingsRepository.uncategorizedPositionFlow,
         ) { feedSources, uncategorizedPosition ->
             val sourcesByCategory = feedSources.groupBy { it.feedSource.category }
-            val sortedKeys = sourcesByCategory.keys.sortedWith(
-                compareBy(
-                    { it?.position ?: uncategorizedPosition },
-                    { it?.title },
-                ),
-            )
+            val sortedKeys =
+                sourcesByCategory.keys.sortedWith(
+                    compareBy(
+                        { it?.position ?: uncategorizedPosition },
+                        { it?.title },
+                    ),
+                )
             sortedKeys.associateWith {
                 sourcesByCategory[it]
                     ?.sortedWith(
@@ -151,53 +157,59 @@ internal class FeedSourcesRepository(
                             { sourceWithCount -> sourceWithCount.feedSource.position },
                             { sourceWithCount -> sourceWithCount.feedSource.title },
                         ),
-                    )
-                    .orEmpty()
+                    ).orEmpty()
             }
         }
 
-    suspend fun reorderPinnedFeedSources(orderedIds: List<String>) = withContext(dispatcherProvider.io) {
-        databaseHelper.updatePinnedPositions(orderedIds)
-    }
-
-    suspend fun reorderFeedSources(orderedIds: List<String>) = withContext(dispatcherProvider.io) {
-        databaseHelper.updateFeedSourcePositions(orderedIds)
-    }
-
-    suspend fun updateFeedSourceName(feedSourceId: String, newName: String) =
-        when (accountsRepository.getCurrentSyncAccount()) {
-            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                gReaderRepository.editFeedSourceName(feedSourceId, newName)
-                    .onErrorSuspend {
-                        feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditFeedSourceNameFailed))
-                    }
-            }
-
-            SyncAccounts.FEEDBIN -> {
-                feedbinRepository.editFeedSourceName(feedSourceId, newName)
-                    .onErrorSuspend {
-                        feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditFeedSourceNameFailed))
-                    }
-            }
-            SyncAccounts.LOCAL,
-            SyncAccounts.DROPBOX,
-            SyncAccounts.GOOGLE_DRIVE,
-            SyncAccounts.ICLOUD,
-            -> {
-                val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
-                databaseHelper.updateFeedSourceName(
-                    feedSourceId = feedSourceId,
-                    newName = newName,
-                    cloudSessionId = cloudSessionId,
-                    withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-                )
-                feedSyncRepository.localEditCommitted(cloudSessionId)
-                feedSyncRepository.performBackup()
-            }
+    suspend fun reorderPinnedFeedSources(orderedIds: List<String>) =
+        withContext(dispatcherProvider.io) {
+            databaseHelper.updatePinnedPositions(orderedIds)
         }
 
-    fun getKeepUnreadOnScrollFeedSourceIds(): Flow<Set<String>> =
-        databaseHelper.getKeepUnreadOnScrollFeedSourceIdsFlow()
+    suspend fun reorderFeedSources(orderedIds: List<String>) =
+        withContext(dispatcherProvider.io) {
+            databaseHelper.updateFeedSourcePositions(orderedIds)
+        }
+
+    suspend fun updateFeedSourceName(
+        feedSourceId: String,
+        newName: String,
+    ) = when (accountsRepository.getCurrentSyncAccount()) {
+        SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
+            gReaderRepository
+                .editFeedSourceName(feedSourceId, newName)
+                .onErrorSuspend {
+                    feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditFeedSourceNameFailed))
+                }
+        }
+
+        SyncAccounts.FEEDBIN -> {
+            feedbinRepository
+                .editFeedSourceName(feedSourceId, newName)
+                .onErrorSuspend {
+                    feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditFeedSourceNameFailed))
+                }
+        }
+
+        SyncAccounts.LOCAL,
+        SyncAccounts.DROPBOX,
+        SyncAccounts.GOOGLE_DRIVE,
+        SyncAccounts.ICLOUD,
+        SyncAccounts.FOLDER,
+        -> {
+            val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
+            databaseHelper.updateFeedSourceName(
+                feedSourceId = feedSourceId,
+                newName = newName,
+                cloudSessionId = cloudSessionId,
+                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+            )
+            feedSyncRepository.localEditCommitted(cloudSessionId)
+            feedSyncRepository.performBackup()
+        }
+    }
+
+    fun getKeepUnreadOnScrollFeedSourceIds(): Flow<Set<String>> = databaseHelper.getKeepUnreadOnScrollFeedSourceIdsFlow()
 
     suspend fun insertFeedSourcePreference(
         feedSourceId: String,
@@ -207,11 +219,12 @@ internal class FeedSourcesRepository(
         isNotificationEnabled: Boolean,
         isHideImagesEnabled: Boolean,
     ) = withContext(dispatcherProvider.io) {
-        val pinnedFeedSourceIds = if (isPinned) {
-            databaseHelper.getPinnedFeedSourceIds()
-        } else {
-            emptyList()
-        }
+        val pinnedFeedSourceIds =
+            if (isPinned) {
+                databaseHelper.getPinnedFeedSourceIds()
+            } else {
+                emptyList()
+            }
         databaseHelper.insertFeedSourcePreference(
             feedSourceId = feedSourceId,
             articleOpenMode = articleOpenMode,
@@ -233,8 +246,9 @@ internal class FeedSourcesRepository(
     ): FeedAddedState {
         dropMemoisedLogoLookups()
         val sanitizedUrl = sanitizeUrl(feedUrl.trim())
-        val url = YouTubeChannelUrl.normalizePlaylistUrl(sanitizedUrl)
-            ?: YouTubeChannelUrl.normalizeFeedUrl(sanitizedUrl) ?: sanitizedUrl
+        val url =
+            YouTubeChannelUrl.normalizePlaylistUrl(sanitizedUrl)
+                ?: YouTubeChannelUrl.normalizeFeedUrl(sanitizedUrl) ?: sanitizedUrl
         if (hideYouTubeShorts &&
             (YouTubeChannelUrl.parse(url) != null || YouTubeChannelUrl.channelIdFromFeedUrl(url) != null)
         ) {
@@ -250,25 +264,33 @@ internal class FeedSourcesRepository(
         fetchedFeed: AddFeedResponse.FeedFound? = null,
     ): FeedAddedState =
         when (accountsRepository.getCurrentSyncAccount()) {
-            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> addFeedSourceForFreshRss(
-                url,
-                categoryName,
-                isNotificationEnabled,
-            )
+            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
+                addFeedSourceForFreshRss(
+                    url,
+                    categoryName,
+                    isNotificationEnabled,
+                )
+            }
 
-            SyncAccounts.FEEDBIN -> addFeedSourceForFeedbin(
-                url,
-                categoryName,
-                isNotificationEnabled,
-            )
+            SyncAccounts.FEEDBIN -> {
+                addFeedSourceForFeedbin(
+                    url,
+                    categoryName,
+                    isNotificationEnabled,
+                )
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.DROPBOX,
             SyncAccounts.GOOGLE_DRIVE,
             SyncAccounts.ICLOUD,
-            -> if (fetchedFeed != null) {
-                addFeedSource(fetchedFeed, isNotificationEnabled)
-            } else {
-                addFeedSourceForLocalAccount(url, categoryName, isNotificationEnabled)
+            SyncAccounts.FOLDER,
+            -> {
+                if (fetchedFeed != null) {
+                    addFeedSource(fetchedFeed, isNotificationEnabled)
+                } else {
+                    addFeedSourceForLocalAccount(url, categoryName, isNotificationEnabled)
+                }
             }
         }
 
@@ -277,16 +299,18 @@ internal class FeedSourcesRepository(
         category: FeedSourceCategory?,
         notifications: Boolean,
     ): FeedAddedState {
-        val channelUrl = YouTubeChannelUrl.normalizeFeedUrl(originalUrl)
-            ?: feedUrlRetriever.getFeedUrl(originalUrl)
+        val channelUrl =
+            YouTubeChannelUrl.normalizeFeedUrl(originalUrl)
+                ?: feedUrlRetriever.getFeedUrl(originalUrl)
         val id = channelUrl?.let(YouTubeChannelUrl::channelIdFromFeedUrl)
         val fullFeed = channelUrl?.let { fetchSingleFeed(it, category) } as? AddFeedResponse.FeedFound
         val filteredUrl = id?.let(YouTubeChannelUrl::noShortsFeedUrl)
-        val filteredFeed = if (fullFeed != null && filteredUrl != null) {
-            fetchSingleFeed(filteredUrl, category) as? AddFeedResponse.FeedFound
-        } else {
-            null
-        }
+        val filteredFeed =
+            if (fullFeed != null && filteredUrl != null) {
+                fetchSingleFeed(filteredUrl, category) as? AddFeedResponse.FeedFound
+            } else {
+                null
+            }
         currentCoroutineContext().ensureActive()
         if (fullFeed == null || filteredFeed == null || filteredFeed.rssChannel.items.isEmpty() ||
             fullFeed.parsedFeedSource.title.isBlank()
@@ -308,12 +332,13 @@ internal class FeedSourcesRepository(
         category: FeedSourceCategory?,
         notifications: Boolean,
     ): FeedAddedState {
-        val result = addResolvedFeed(
-            fullFeed?.parsedFeedSource?.url ?: originalUrl,
-            category,
-            notifications,
-            fetchedFeed = fullFeed,
-        )
+        val result =
+            addResolvedFeed(
+                fullFeed?.parsedFeedSource?.url ?: originalUrl,
+                category,
+                notifications,
+                fetchedFeed = fullFeed,
+            )
         return if (result is FeedAddedState.FeedAdded) result.copy(shortsFilterFallback = true) else result
     }
 
@@ -335,14 +360,22 @@ internal class FeedSourcesRepository(
                 feedStateRepository.getFeeds()
             }
             return when (accountsRepository.getCurrentSyncAccount()) {
-                SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX ->
+                SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
                     editFeedSourceForFreshRss(newFeedSource, originalFeedSource)
-                SyncAccounts.FEEDBIN -> editFeedSourceForFeedbin(newFeedSource, originalFeedSource)
+                }
+
+                SyncAccounts.FEEDBIN -> {
+                    editFeedSourceForFeedbin(newFeedSource, originalFeedSource)
+                }
+
                 SyncAccounts.LOCAL,
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
-                -> editFeedSourceForLocalAccount(newFeedSource, originalFeedSource)
+                SyncAccounts.FOLDER,
+                -> {
+                    editFeedSourceForLocalAccount(newFeedSource, originalFeedSource)
+                }
             }
         }
     }
@@ -360,16 +393,20 @@ internal class FeedSourcesRepository(
                 addFeedSource(feedResponse, isNotificationEnabled)
             }
 
-            is AddFeedResponse.FetchError -> FeedAddedState.Error.FetchFailed(feedResponse.statusCode)
+            is AddFeedResponse.FetchError -> {
+                FeedAddedState.Error.FetchFailed(feedResponse.statusCode)
+            }
 
-            is AddFeedResponse.VerificationRequired -> feedResponse.failure.challenge.let { challenge ->
-                val supported = recoveryRepository.supported
-                FeedAddedState.Error.FetchFailed(
-                    statusCode = challenge.statusCode,
-                    verificationUrl = challenge.effectiveUrl.takeIf { supported },
-                    retryAfter = challenge.retryAfter.takeIf { supported },
-                    challengedUrl = challenge.requestedUrl.takeIf { supported },
-                )
+            is AddFeedResponse.VerificationRequired -> {
+                feedResponse.failure.challenge.let { challenge ->
+                    val supported = recoveryRepository.supported
+                    FeedAddedState.Error.FetchFailed(
+                        statusCode = challenge.statusCode,
+                        verificationUrl = challenge.effectiveUrl.takeIf { supported },
+                        retryAfter = challenge.retryAfter.takeIf { supported },
+                        challengedUrl = challenge.requestedUrl.takeIf { supported },
+                    )
+                }
             }
 
             AddFeedResponse.EmptyFeed -> {
@@ -390,11 +427,12 @@ internal class FeedSourcesRepository(
         for (actualUrl in getCandidateFeedUrls(originalUrl, allowServerDiscovery = true)) {
             logger.d { "Trying with actualUrl: $actualUrl" }
 
-            val addResult = gReaderRepository.addFeedSource(
-                url = actualUrl,
-                categoryName = categoryName,
-                isNotificationEnabled = isNotificationEnabled,
-            )
+            val addResult =
+                gReaderRepository.addFeedSource(
+                    url = actualUrl,
+                    categoryName = categoryName,
+                    isNotificationEnabled = isNotificationEnabled,
+                )
             if (addResult.isSuccess()) {
                 if (YouTubeChannelUrl.parse(originalUrl) != null || isYouTubeFeedUrl(originalUrl)) {
                     finalizeFreshRssFeedAddition()
@@ -404,15 +442,17 @@ internal class FeedSourcesRepository(
         }
 
         logger.d { "Trying to get: $originalUrl" }
-        val url = discoverFeedUrlAfterGuessing(originalUrl)
-            ?: return FeedAddedState.Error.InvalidUrl(canForceAdd = false)
+        val url =
+            discoverFeedUrlAfterGuessing(originalUrl)
+                ?: return FeedAddedState.Error.InvalidUrl(canForceAdd = false)
         logger.d { "Found url: $url" }
 
-        val addResult = gReaderRepository.addFeedSource(
-            url = url,
-            categoryName = categoryName,
-            isNotificationEnabled = isNotificationEnabled,
-        )
+        val addResult =
+            gReaderRepository.addFeedSource(
+                url = url,
+                categoryName = categoryName,
+                isNotificationEnabled = isNotificationEnabled,
+            )
         if (addResult.isError()) {
             return FeedAddedState.Error.GenericError(canForceAdd = false)
         }
@@ -437,40 +477,43 @@ internal class FeedSourcesRepository(
     private suspend fun fetchSingleFeed(
         url: String,
         category: FeedSourceCategory?,
-    ): AddFeedResponse = withContext(dispatcherProvider.io) {
-        val addResult = when (val outcome = guessLinkAndParseFeed(url)) {
-            is GuessOutcome.Found -> outcome.result
-            is GuessOutcome.HttpFailure -> return@withContext AddFeedResponse.FetchError(outcome.statusCode)
-            is GuessOutcome.Challenge -> return@withContext AddFeedResponse.VerificationRequired(outcome.failure)
-            GuessOutcome.NotFound -> return@withContext AddFeedResponse.NotRssFeed
+    ): AddFeedResponse =
+        withContext(dispatcherProvider.io) {
+            val addResult =
+                when (val outcome = guessLinkAndParseFeed(url)) {
+                    is GuessOutcome.Found -> outcome.result
+                    is GuessOutcome.HttpFailure -> return@withContext AddFeedResponse.FetchError(outcome.statusCode)
+                    is GuessOutcome.Challenge -> return@withContext AddFeedResponse.VerificationRequired(outcome.failure)
+                    GuessOutcome.NotFound -> return@withContext AddFeedResponse.NotRssFeed
+                }
+            val rssChannel = addResult.channel
+            val urlToSave = addResult.usedUrl
+
+            logger.d { "<- Got back ${rssChannel.title}" }
+
+            val title = rssChannelMapper.getFeedTitle(rssChannel)
+
+            if (title != null) {
+                val logoUrl = feedSourceLogoRetriever.getFeedSourceLogoUrl(rssChannel, feedUrl = urlToSave)
+
+                val parsedFeedSource =
+                    ParsedFeedSource(
+                        id = urlToSave.hashCode().toString(),
+                        url = urlToSave,
+                        title = title,
+                        category = category,
+                        logoUrl = logoUrl,
+                        websiteUrl = rssChannel.link,
+                    )
+
+                return@withContext AddFeedResponse.FeedFound(
+                    rssChannel = rssChannel,
+                    parsedFeedSource = parsedFeedSource,
+                )
+            } else {
+                return@withContext AddFeedResponse.EmptyFeed
+            }
         }
-        val rssChannel = addResult.channel
-        val urlToSave = addResult.usedUrl
-
-        logger.d { "<- Got back ${rssChannel.title}" }
-
-        val title = rssChannelMapper.getFeedTitle(rssChannel)
-
-        if (title != null) {
-            val logoUrl = feedSourceLogoRetriever.getFeedSourceLogoUrl(rssChannel, feedUrl = urlToSave)
-
-            val parsedFeedSource = ParsedFeedSource(
-                id = urlToSave.hashCode().toString(),
-                url = urlToSave,
-                title = title,
-                category = category,
-                logoUrl = logoUrl,
-                websiteUrl = rssChannel.link,
-            )
-
-            return@withContext AddFeedResponse.FeedFound(
-                rssChannel = rssChannel,
-                parsedFeedSource = parsedFeedSource,
-            )
-        } else {
-            return@withContext AddFeedResponse.EmptyFeed
-        }
-    }
 
     private suspend fun editFeedSourceForLocalAccount(
         newFeedSource: FeedSource,
@@ -505,16 +548,20 @@ internal class FeedSourcesRepository(
                     FeedEditedState.FeedEdited(newName)
                 }
 
-                is AddFeedResponse.FetchError -> FeedEditedState.Error.FetchFailed(response.statusCode)
+                is AddFeedResponse.FetchError -> {
+                    FeedEditedState.Error.FetchFailed(response.statusCode)
+                }
 
-                is AddFeedResponse.VerificationRequired -> response.failure.challenge.let { challenge ->
-                    val supported = recoveryRepository.supported
-                    FeedEditedState.Error.FetchFailed(
-                        statusCode = challenge.statusCode,
-                        verificationUrl = challenge.effectiveUrl.takeIf { supported },
-                        retryAfter = challenge.retryAfter.takeIf { supported },
-                        challengedUrl = challenge.requestedUrl.takeIf { supported },
-                    )
+                is AddFeedResponse.VerificationRequired -> {
+                    response.failure.challenge.let { challenge ->
+                        val supported = recoveryRepository.supported
+                        FeedEditedState.Error.FetchFailed(
+                            statusCode = challenge.statusCode,
+                            verificationUrl = challenge.effectiveUrl.takeIf { supported },
+                            retryAfter = challenge.retryAfter.takeIf { supported },
+                            challengedUrl = challenge.requestedUrl.takeIf { supported },
+                        )
+                    }
                 }
 
                 AddFeedResponse.EmptyFeed -> {
@@ -553,25 +600,28 @@ internal class FeedSourcesRepository(
         return FeedEditedState.FeedEdited(newFeedSource.title)
     }
 
-    private suspend fun otherSourceWithUrl(url: String, feedSourceId: String): FeedSource? =
-        databaseHelper.getFeedSources().firstOrNull { it.url == url && it.id != feedSourceId }
+    private suspend fun otherSourceWithUrl(
+        url: String,
+        feedSourceId: String,
+    ): FeedSource? = databaseHelper.getFeedSources().firstOrNull { it.url == url && it.id != feedSourceId }
 
     private suspend fun editFeedSourceForFreshRss(
         newFeedSource: FeedSource,
         originalFeedSource: FeedSource?,
     ): FeedEditedState {
-        gReaderRepository.editFeedSource(
-            newFeedSource = newFeedSource,
-            originalFeedSource = originalFeedSource,
-        ).fold(
-            onFailure = {
-                return FeedEditedState.Error.GenericError
-            },
-            onSuccess = {
-                feedStateRepository.updateCurrentFilterName(newFeedSource.title)
-                return FeedEditedState.FeedEdited(newFeedSource.title)
-            },
-        )
+        gReaderRepository
+            .editFeedSource(
+                newFeedSource = newFeedSource,
+                originalFeedSource = originalFeedSource,
+            ).fold(
+                onFailure = {
+                    return FeedEditedState.Error.GenericError
+                },
+                onSuccess = {
+                    feedStateRepository.updateCurrentFilterName(newFeedSource.title)
+                    return FeedEditedState.FeedEdited(newFeedSource.title)
+                },
+            )
     }
 
     private suspend fun addFeedSourceForFeedbin(
@@ -582,26 +632,29 @@ internal class FeedSourcesRepository(
         for (actualUrl in getCandidateFeedUrls(originalUrl, allowServerDiscovery = true)) {
             logger.d { "Trying with actualUrl: $actualUrl" }
 
-            val addResult = feedbinRepository.addFeedSource(
-                url = actualUrl,
-                categoryName = categoryName,
-                isNotificationEnabled = isNotificationEnabled,
-            )
+            val addResult =
+                feedbinRepository.addFeedSource(
+                    url = actualUrl,
+                    categoryName = categoryName,
+                    isNotificationEnabled = isNotificationEnabled,
+                )
             if (addResult.isSuccess()) {
                 return FeedAddedState.FeedAdded()
             }
         }
 
         logger.d { "Trying to get: $originalUrl" }
-        val url = discoverFeedUrlAfterGuessing(originalUrl)
-            ?: return FeedAddedState.Error.InvalidUrl(canForceAdd = false)
+        val url =
+            discoverFeedUrlAfterGuessing(originalUrl)
+                ?: return FeedAddedState.Error.InvalidUrl(canForceAdd = false)
         logger.d { "Found url: $url" }
 
-        val addResult = feedbinRepository.addFeedSource(
-            url = url,
-            categoryName = categoryName,
-            isNotificationEnabled = isNotificationEnabled,
-        )
+        val addResult =
+            feedbinRepository.addFeedSource(
+                url = url,
+                categoryName = categoryName,
+                isNotificationEnabled = isNotificationEnabled,
+            )
         if (addResult.isError()) {
             return FeedAddedState.Error.GenericError(canForceAdd = false)
         }
@@ -613,72 +666,76 @@ internal class FeedSourcesRepository(
         newFeedSource: FeedSource,
         originalFeedSource: FeedSource?,
     ): FeedEditedState {
-        feedbinRepository.editFeedSource(
-            newFeedSource = newFeedSource,
-            originalFeedSource = originalFeedSource,
-        ).fold(
-            onFailure = {
-                return FeedEditedState.Error.GenericError
-            },
-            onSuccess = {
-                feedStateRepository.updateCurrentFilterName(newFeedSource.title)
-                return FeedEditedState.FeedEdited(newFeedSource.title)
-            },
-        )
+        feedbinRepository
+            .editFeedSource(
+                newFeedSource = newFeedSource,
+                originalFeedSource = originalFeedSource,
+            ).fold(
+                onFailure = {
+                    return FeedEditedState.Error.GenericError
+                },
+                onSuccess = {
+                    feedStateRepository.updateCurrentFilterName(newFeedSource.title)
+                    return FeedEditedState.FeedEdited(newFeedSource.title)
+                },
+            )
     }
 
     private suspend fun addFeedSource(
         feedFound: AddFeedResponse.FeedFound,
         isNotificationEnabled: Boolean,
-    ): FeedAddedState = withContext(dispatcherProvider.io) {
-        val rssChannel = feedFound.rssChannel
-        val parsedFeedSource = feedFound.parsedFeedSource
-        val currentTimestamp = dateFormatter.currentTimeMillis()
-        val feedSource = FeedSource(
-            id = parsedFeedSource.url.hashCode().toString(),
-            url = parsedFeedSource.url,
-            title = parsedFeedSource.title,
-            lastSyncTimestamp = currentTimestamp,
-            category = parsedFeedSource.category,
-            logoUrl = parsedFeedSource.logoUrl,
-            websiteUrl = rssChannel.link,
-            isHiddenFromTimeline = false,
-            articleOpenMode = ArticleOpenMode.DEFAULT,
-            isPinned = false,
-            isNotificationEnabled = isNotificationEnabled,
-            isHideImagesEnabled = false,
-            fetchFailed = false,
-        )
-
-        val feedItems = rssChannelMapper.getFeedItems(
-            rssChannel = rssChannel,
-            feedSource = feedSource,
-        )
-
-        val existingSources = databaseHelper.getFeedSources()
-        val exactMatch = existingSources.firstOrNull { it.url == parsedFeedSource.url }
-        if (exactMatch != null) {
-            return@withContext FeedAddedState.FeedAlreadyExists(exactMatch.title)
-        }
-        val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
-        databaseHelper.insertFeedSource(
-            listOf(
-                parsedFeedSource.copy(
+    ): FeedAddedState =
+        withContext(dispatcherProvider.io) {
+            val rssChannel = feedFound.rssChannel
+            val parsedFeedSource = feedFound.parsedFeedSource
+            val currentTimestamp = dateFormatter.currentTimeMillis()
+            val feedSource =
+                FeedSource(
+                    id = parsedFeedSource.url.hashCode().toString(),
+                    url = parsedFeedSource.url,
+                    title = parsedFeedSource.title,
+                    lastSyncTimestamp = currentTimestamp,
+                    category = parsedFeedSource.category,
+                    logoUrl = parsedFeedSource.logoUrl,
                     websiteUrl = rssChannel.link,
+                    isHiddenFromTimeline = false,
+                    articleOpenMode = ArticleOpenMode.DEFAULT,
+                    isPinned = false,
+                    isNotificationEnabled = isNotificationEnabled,
+                    isHideImagesEnabled = false,
+                    fetchFailed = false,
+                )
+
+            val feedItems =
+                rssChannelMapper.getFeedItems(
+                    rssChannel = rssChannel,
+                    feedSource = feedSource,
+                )
+
+            val existingSources = databaseHelper.getFeedSources()
+            val exactMatch = existingSources.firstOrNull { it.url == parsedFeedSource.url }
+            if (exactMatch != null) {
+                return@withContext FeedAddedState.FeedAlreadyExists(exactMatch.title)
+            }
+            val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
+            databaseHelper.insertFeedSource(
+                listOf(
+                    parsedFeedSource.copy(
+                        websiteUrl = rssChannel.link,
+                    ),
                 ),
-            ),
-            cloudSessionId = cloudSessionId,
-            withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-        )
-        databaseHelper.insertFeedItems(feedItems, currentTimestamp)
-        // After the items, so enabling notifications marks the initial articles as already notified.
-        databaseHelper.updateNotificationEnabledStatus(feedSource.id, isNotificationEnabled)
-        feedSyncRepository.localEditCommitted(cloudSessionId)
-        feedSyncRepository.performBackup()
-        feedStateRepository.emitUpdateStatus(FinishedFeedUpdateStatus)
-        feedStateRepository.getFeeds()
-        FeedAddedState.FeedAdded(parsedFeedSource.title)
-    }
+                cloudSessionId = cloudSessionId,
+                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+            )
+            databaseHelper.insertFeedItems(feedItems, currentTimestamp)
+            // After the items, so enabling notifications marks the initial articles as already notified.
+            databaseHelper.updateNotificationEnabledStatus(feedSource.id, isNotificationEnabled)
+            feedSyncRepository.localEditCommitted(cloudSessionId)
+            feedSyncRepository.performBackup()
+            feedStateRepository.emitUpdateStatus(FinishedFeedUpdateStatus)
+            feedStateRepository.getFeeds()
+            FeedAddedState.FeedAdded(parsedFeedSource.title)
+        }
 
     private suspend fun updateFeedSource(feedSource: FeedSource) {
         val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
@@ -699,10 +756,11 @@ internal class FeedSourcesRepository(
         for (actualUrl in getCandidateFeedUrls(originalUrl)) {
             logger.d { "Trying with actualUrl: $actualUrl" }
             try {
-                val channel = rssParserWrapper.getRssChannel(
-                    actualUrl,
-                    allowBrowserTier = actualUrl == originalUrl.trim(),
-                )
+                val channel =
+                    rssParserWrapper.getRssChannel(
+                        actualUrl,
+                        allowBrowserTier = actualUrl == originalUrl.trim(),
+                    )
                 return GuessOutcome.Found(AddResult(channel = channel, usedUrl = actualUrl))
             } catch (e: CancellationException) {
                 throw e
@@ -736,11 +794,15 @@ internal class FeedSourcesRepository(
         return guessFailure(originalChallenge ?: otherChallenge, originalHttpStatus)
     }
 
-    private fun guessFailure(challenge: FeedVerificationRequired?, originalHttpStatus: Int?): GuessOutcome = when {
-        challenge != null -> GuessOutcome.Challenge(challenge)
-        originalHttpStatus != null -> GuessOutcome.HttpFailure(originalHttpStatus)
-        else -> GuessOutcome.NotFound
-    }
+    private fun guessFailure(
+        challenge: FeedVerificationRequired?,
+        originalHttpStatus: Int?,
+    ): GuessOutcome =
+        when {
+            challenge != null -> GuessOutcome.Challenge(challenge)
+            originalHttpStatus != null -> GuessOutcome.HttpFailure(originalHttpStatus)
+            else -> GuessOutcome.NotFound
+        }
 
     private suspend fun getCandidateFeedUrls(
         originalUrl: String,
@@ -781,62 +843,69 @@ internal class FeedSourcesRepository(
         logoUrl: String?,
         isNotificationEnabled: Boolean = false,
         backUp: Boolean = true,
-    ): DataResult<Unit> = withContext(dispatcherProvider.io) {
-        when (accountsRepository.getCurrentSyncAccount()) {
-            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                gReaderRepository.addFeedSource(
-                    url = feedUrl,
-                    categoryName = category,
-                    isNotificationEnabled = isNotificationEnabled,
-                )
-            }
-
-            SyncAccounts.FEEDBIN -> {
-                feedbinRepository.addFeedSource(
-                    url = feedUrl,
-                    categoryName = category,
-                    isNotificationEnabled = isNotificationEnabled,
-                )
-            }
-
-            SyncAccounts.LOCAL,
-            SyncAccounts.DROPBOX,
-            SyncAccounts.GOOGLE_DRIVE,
-            SyncAccounts.ICLOUD,
-            -> {
-                val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
-                val withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId)
-                val parsedFeedSource = ParsedFeedSource(
-                    id = feedUrl.hashCode().toString(),
-                    url = feedUrl,
-                    title = feedTitle,
-                    category = category,
-                    logoUrl = logoUrl,
-                    websiteUrl = null,
-                )
-
-                if (category != null && cloudSessionId == null) {
-                    databaseHelper.insertCategories(listOf(category))
+    ): DataResult<Unit> =
+        withContext(dispatcherProvider.io) {
+            when (accountsRepository.getCurrentSyncAccount()) {
+                SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
+                    gReaderRepository.addFeedSource(
+                        url = feedUrl,
+                        categoryName = category,
+                        isNotificationEnabled = isNotificationEnabled,
+                    )
                 }
 
-                databaseHelper.insertFeedSource(
-                    feedSource = listOf(parsedFeedSource),
-                    cloudSessionId = cloudSessionId,
-                    withCurrentSession = withCurrentSession,
-                )
-                databaseHelper.updateNotificationEnabledStatus(parsedFeedSource.id, isNotificationEnabled)
+                SyncAccounts.FEEDBIN -> {
+                    feedbinRepository.addFeedSource(
+                        url = feedUrl,
+                        categoryName = category,
+                        isNotificationEnabled = isNotificationEnabled,
+                    )
+                }
 
-                feedSyncRepository.localEditCommitted(cloudSessionId)
-                if (backUp) feedSyncRepository.performBackup()
-                DataResult.Success(Unit)
+                SyncAccounts.LOCAL,
+                SyncAccounts.DROPBOX,
+                SyncAccounts.GOOGLE_DRIVE,
+                SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
+                -> {
+                    val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
+                    val withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId)
+                    val parsedFeedSource =
+                        ParsedFeedSource(
+                            id = feedUrl.hashCode().toString(),
+                            url = feedUrl,
+                            title = feedTitle,
+                            category = category,
+                            logoUrl = logoUrl,
+                            websiteUrl = null,
+                        )
+
+                    if (category != null && cloudSessionId == null) {
+                        databaseHelper.insertCategories(listOf(category))
+                    }
+
+                    databaseHelper.insertFeedSource(
+                        feedSource = listOf(parsedFeedSource),
+                        cloudSessionId = cloudSessionId,
+                        withCurrentSession = withCurrentSession,
+                    )
+                    databaseHelper.updateNotificationEnabledStatus(parsedFeedSource.id, isNotificationEnabled)
+
+                    feedSyncRepository.localEditCommitted(cloudSessionId)
+                    if (backUp) feedSyncRepository.performBackup()
+                    DataResult.Success(Unit)
+                }
             }
         }
-    }
 
     // Feed Suggestions refreshes and backs up once when the screen closes, not after every add or Undo.
-    suspend fun addSuggestedFeed(feed: SuggestedFeed, categoryName: String) {
-        val category = databaseHelper.getCategoryByName(categoryName)
-            ?: FeedSourceCategory(id = categoryName.hashCode().toString(), title = categoryName)
+    suspend fun addSuggestedFeed(
+        feed: SuggestedFeed,
+        categoryName: String,
+    ) {
+        val category =
+            databaseHelper.getCategoryByName(categoryName)
+                ?: FeedSourceCategory(id = categoryName.hashCode().toString(), title = categoryName)
         val result = addFeedSourceWithoutFetching(feed.url, feed.name, category, feed.logoUrl, backUp = false)
         check(result.isSuccess()) { "Unable to subscribe to ${feed.url}" }
     }
@@ -846,9 +915,18 @@ internal class FeedSourcesRepository(
     }
 
     private sealed interface GuessOutcome {
-        data class Found(val result: AddResult) : GuessOutcome
-        data class HttpFailure(val statusCode: Int) : GuessOutcome
-        data class Challenge(val failure: FeedVerificationRequired) : GuessOutcome
+        data class Found(
+            val result: AddResult,
+        ) : GuessOutcome
+
+        data class HttpFailure(
+            val statusCode: Int,
+        ) : GuessOutcome
+
+        data class Challenge(
+            val failure: FeedVerificationRequired,
+        ) : GuessOutcome
+
         data object NotFound : GuessOutcome
     }
 

@@ -20,65 +20,94 @@ internal fun AccountTestContent(fake: FakeDesktopAccount) {
     val state = fake.uiState.value
     val draft = fake.draft
     when (fake.account) {
-        SyncAccounts.FRESH_RSS -> FreshRssAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            isLoginLoading = fake.loginLoading.value,
-            hasLocalSubscriptions = false,
-            onLogin = fake::login,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.MINIFLUX -> MinifluxAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            isLoginLoading = fake.loginLoading.value,
-            hasLocalSubscriptions = false,
-            onLogin = fake::login,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.FEEDBIN -> FeedbinAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            isLoginLoading = fake.loginLoading.value,
-            hasLocalSubscriptions = false,
-            onLogin = fake::login,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.BAZQUX -> BazquxAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            isLoginLoading = fake.loginLoading.value,
-            hasLocalSubscriptions = false,
-            onLogin = fake::login,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.DROPBOX -> DropboxAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            onStartAuth = fake::startDropbox,
-            onConfirmCode = fake::confirmCode,
-            onBackup = fake::backup,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.GOOGLE_DRIVE -> GoogleDriveAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            onConnect = fake::connect,
-            onBackup = fake::backup,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.ICLOUD -> ICloudAccountContent(
-            uiState = state,
-            credentialsState = draft,
-            onConnect = fake::connect,
-            onBackup = fake::backup,
-            onDisconnect = fake::disconnect,
-        )
-        SyncAccounts.LOCAL -> error("LOCAL has no provider connection form")
+        SyncAccounts.FRESH_RSS -> {
+            FreshRssAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                isLoginLoading = fake.loginLoading.value,
+                hasLocalSubscriptions = false,
+                onLogin = fake::login,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.MINIFLUX -> {
+            MinifluxAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                isLoginLoading = fake.loginLoading.value,
+                hasLocalSubscriptions = false,
+                onLogin = fake::login,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.FEEDBIN -> {
+            FeedbinAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                isLoginLoading = fake.loginLoading.value,
+                hasLocalSubscriptions = false,
+                onLogin = fake::login,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.BAZQUX -> {
+            BazquxAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                isLoginLoading = fake.loginLoading.value,
+                hasLocalSubscriptions = false,
+                onLogin = fake::login,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.DROPBOX -> {
+            DropboxAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                onStartAuth = fake::startDropbox,
+                onConfirmCode = fake::confirmCode,
+                onBackup = fake::backup,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.GOOGLE_DRIVE -> {
+            GoogleDriveAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                onConnect = fake::connect,
+                onBackup = fake::backup,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.ICLOUD -> {
+            ICloudAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                onConnect = fake::connect,
+                onBackup = fake::backup,
+                onDisconnect = fake::disconnect,
+            )
+        }
+
+        SyncAccounts.LOCAL -> {
+            error("LOCAL has no provider connection form")
+        }
+
+        SyncAccounts.FOLDER -> {
+            error("FOLDER has no provider connection form until the Folder desktop screen exists")
+        }
     }
 }
 
-internal class FakeDesktopAccount(val account: SyncAccounts) {
+internal class FakeDesktopAccount(
+    val account: SyncAccounts,
+) {
     val draft = CredentialsState()
     val uiState = mutableStateOf<AccountConnectionUiState>(AccountConnectionUiState.Unlinked)
     val loginLoading = mutableStateOf(false)
@@ -90,12 +119,14 @@ internal class FakeDesktopAccount(val account: SyncAccounts) {
     var submittedCode: String? = null
 
     val isServer: Boolean
-        get() = account in setOf(
-            SyncAccounts.FRESH_RSS,
-            SyncAccounts.MINIFLUX,
-            SyncAccounts.FEEDBIN,
-            SyncAccounts.BAZQUX,
-        )
+        get() =
+            account in
+                setOf(
+                    SyncAccounts.FRESH_RSS,
+                    SyncAccounts.MINIFLUX,
+                    SyncAccounts.FEEDBIN,
+                    SyncAccounts.BAZQUX,
+                )
 
     fun populateDraft() {
         draft.serverUrl = TextFieldValue(ENDPOINT)
@@ -104,7 +135,11 @@ internal class FakeDesktopAccount(val account: SyncAccounts) {
         draft.authCode = TextFieldValue(CODE)
     }
 
-    fun login(serverUrl: String?, username: String, password: String) {
+    fun login(
+        serverUrl: String?,
+        username: String,
+        password: String,
+    ) {
         submittedCredentials = listOf(serverUrl, username, password)
         requests.incrementAndGet()
         loginLoading.value = true
@@ -138,9 +173,10 @@ internal class FakeDesktopAccount(val account: SyncAccounts) {
 
     fun link() {
         loginLoading.value = false
-        uiState.value = AccountConnectionUiState.Linked(
-            AccountSyncUIState.Synced(lastUploadDate = SYNC_DATE, lastDownloadDate = SYNC_DATE),
-        )
+        uiState.value =
+            AccountConnectionUiState.Linked(
+                AccountSyncUIState.Synced(lastUploadDate = SYNC_DATE, lastDownloadDate = SYNC_DATE),
+            )
     }
 
     fun disconnect() {

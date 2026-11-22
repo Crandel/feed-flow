@@ -50,7 +50,8 @@ internal class FeedActionsRepository(
             return
         }
 
-        databaseHelper.getReadStatusPendingActions(currentAccount.name)
+        databaseHelper
+            .getReadStatusPendingActions(currentAccount.name)
             .groupBy { it.is_read }
             .forEach { (isRead, pendingActions) ->
                 val feedItemIds = pendingActions.map { FeedItemId(it.feed_item_id) }
@@ -91,6 +92,7 @@ internal class FeedActionsRepository(
             SyncAccounts.DROPBOX,
             SyncAccounts.GOOGLE_DRIVE,
             SyncAccounts.ICLOUD,
+            SyncAccounts.FOLDER,
             -> {
                 val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                 databaseHelper.updateReadStatus(
@@ -123,15 +125,22 @@ internal class FeedActionsRepository(
         isRead: Boolean,
     ): DataResult<Unit> =
         when (account) {
-            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX ->
+            SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
                 gReaderRepository.updateReadStatus(feedItemIds, isRead)
-            SyncAccounts.FEEDBIN ->
+            }
+
+            SyncAccounts.FEEDBIN -> {
                 feedbinRepository.updateReadStatus(feedItemIds, isRead)
+            }
+
             SyncAccounts.LOCAL,
             SyncAccounts.DROPBOX,
             SyncAccounts.GOOGLE_DRIVE,
             SyncAccounts.ICLOUD,
-            -> DataResult.Success(Unit)
+            SyncAccounts.FOLDER,
+            -> {
+                DataResult.Success(Unit)
+            }
         }
 
     private suspend fun DataResult<Unit>.handleRemoteReadStatusResult(
@@ -155,10 +164,11 @@ internal class FeedActionsRepository(
 
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    val itemIds = when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
-                    }
+                    val itemIds =
+                        when (feedOrder) {
+                            FeedOrder.NEWEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
+                            FeedOrder.OLDEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
+                        }
                     if (itemIds.isNotEmpty()) {
                         val feedItemIds = itemIds.map { FeedItemId(it) }
                         updateReadStatus(feedItemIds, isRead = true)
@@ -166,10 +176,11 @@ internal class FeedActionsRepository(
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    val itemIds = when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
-                    }
+                    val itemIds =
+                        when (feedOrder) {
+                            FeedOrder.NEWEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
+                            FeedOrder.OLDEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
+                        }
                     if (itemIds.isNotEmpty()) {
                         val feedItemIds = itemIds.map { FeedItemId(it) }
                         updateReadStatus(feedItemIds, isRead = true)
@@ -180,21 +191,27 @@ internal class FeedActionsRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.markAllNewerAsRead(
-                            targetItemId,
-                            currentFilter,
-                            cloudSessionId = cloudSessionId,
-                            withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-                        )
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.markAllOlderAsRead(
-                            targetItemId,
-                            currentFilter,
-                            cloudSessionId = cloudSessionId,
-                            withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-                        )
+                        FeedOrder.NEWEST_FIRST -> {
+                            databaseHelper.markAllNewerAsRead(
+                                targetItemId,
+                                currentFilter,
+                                cloudSessionId = cloudSessionId,
+                                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+                            )
+                        }
+
+                        FeedOrder.OLDEST_FIRST -> {
+                            databaseHelper.markAllOlderAsRead(
+                                targetItemId,
+                                currentFilter,
+                                cloudSessionId = cloudSessionId,
+                                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+                            )
+                        }
                     }
                     feedSyncRepository.localEditCommitted(cloudSessionId)
                 }
@@ -211,10 +228,11 @@ internal class FeedActionsRepository(
 
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    val itemIds = when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
-                    }
+                    val itemIds =
+                        when (feedOrder) {
+                            FeedOrder.NEWEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
+                            FeedOrder.OLDEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
+                        }
                     if (itemIds.isNotEmpty()) {
                         val feedItemIds = itemIds.map { FeedItemId(it) }
                         updateReadStatus(feedItemIds, isRead = true)
@@ -222,10 +240,11 @@ internal class FeedActionsRepository(
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    val itemIds = when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
-                    }
+                    val itemIds =
+                        when (feedOrder) {
+                            FeedOrder.NEWEST_FIRST -> databaseHelper.getOlderItems(targetItemId, currentFilter)
+                            FeedOrder.OLDEST_FIRST -> databaseHelper.getNewerItems(targetItemId, currentFilter)
+                        }
                     if (itemIds.isNotEmpty()) {
                         val feedItemIds = itemIds.map { FeedItemId(it) }
                         updateReadStatus(feedItemIds, isRead = true)
@@ -236,21 +255,27 @@ internal class FeedActionsRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     when (feedOrder) {
-                        FeedOrder.NEWEST_FIRST -> databaseHelper.markAllOlderAsRead(
-                            targetItemId,
-                            currentFilter,
-                            cloudSessionId = cloudSessionId,
-                            withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-                        )
-                        FeedOrder.OLDEST_FIRST -> databaseHelper.markAllNewerAsRead(
-                            targetItemId,
-                            currentFilter,
-                            cloudSessionId = cloudSessionId,
-                            withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
-                        )
+                        FeedOrder.NEWEST_FIRST -> {
+                            databaseHelper.markAllOlderAsRead(
+                                targetItemId,
+                                currentFilter,
+                                cloudSessionId = cloudSessionId,
+                                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+                            )
+                        }
+
+                        FeedOrder.OLDEST_FIRST -> {
+                            databaseHelper.markAllNewerAsRead(
+                                targetItemId,
+                                currentFilter,
+                                cloudSessionId = cloudSessionId,
+                                withCurrentSession = feedSyncRepository.cloudEditGuard(cloudSessionId),
+                            )
+                        }
                     }
                     feedSyncRepository.localEditCommitted(cloudSessionId)
                 }
@@ -268,14 +293,16 @@ internal class FeedActionsRepository(
         feedStateRepository.runUserWrite(onDatabaseFailure = Unit) {
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    gReaderRepository.markAllFeedAsRead(feedFilter)
+                    gReaderRepository
+                        .markAllFeedAsRead(feedFilter)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.MarkAllFeedsAsReadFailed))
                         }
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    feedbinRepository.markAllFeedAsRead(feedFilter)
+                    feedbinRepository
+                        .markAllFeedAsRead(feedFilter)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.MarkAllFeedsAsReadFailed))
                         }
@@ -285,6 +312,7 @@ internal class FeedActionsRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     databaseHelper.markAllFeedAsRead(
@@ -301,7 +329,11 @@ internal class FeedActionsRepository(
 
     suspend fun deleteOldFeeds() {
         // One week
-        val threshold = Clock.System.now().minus(7.days).toEpochMilliseconds()
+        val threshold =
+            Clock.System
+                .now()
+                .minus(7.days)
+                .toEpochMilliseconds()
         val currentFilter = feedStateRepository.getCurrentFeedFilter()
         val oldFeedIds = databaseHelper.getOldFeedItem(threshold, currentFilter)
         databaseHelper.deleteOldFeedItems(threshold, currentFilter)
@@ -309,20 +341,25 @@ internal class FeedActionsRepository(
         feedStateRepository.getFeeds()
     }
 
-    suspend fun updateBookmarkStatus(feedItemId: FeedItemId, isBookmarked: Boolean) {
+    suspend fun updateBookmarkStatus(
+        feedItemId: FeedItemId,
+        isBookmarked: Boolean,
+    ) {
         feedStateRepository.runUserWrite(onDatabaseFailure = Unit) {
             feedStateRepository.updateBookmarkStatus(feedItemId, isBookmarked)
 
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    gReaderRepository.updateBookmarkStatus(feedItemId, isBookmarked)
+                    gReaderRepository
+                        .updateBookmarkStatus(feedItemId, isBookmarked)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.UpdateBookmarkStatusFailed))
                         }
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    feedbinRepository.updateBookmarkStatus(feedItemId, isBookmarked)
+                    feedbinRepository
+                        .updateBookmarkStatus(feedItemId, isBookmarked)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.UpdateBookmarkStatusFailed))
                         }
@@ -332,6 +369,7 @@ internal class FeedActionsRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     databaseHelper.updateBookmarkStatus(
@@ -353,7 +391,10 @@ internal class FeedActionsRepository(
         }
     }
 
-    suspend fun updateReadStatus(feedItemId: FeedItemId, isRead: Boolean) {
+    suspend fun updateReadStatus(
+        feedItemId: FeedItemId,
+        isRead: Boolean,
+    ) {
         feedStateRepository.runUserWrite(onDatabaseFailure = Unit) {
             feedStateRepository.updateReadStatus(feedItemId, isRead)
             updateReadStatus(

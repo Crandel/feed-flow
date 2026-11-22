@@ -41,7 +41,10 @@ internal fun AccountsScreen(
 }
 
 @Composable
-private fun DesktopAccountDetail(account: SyncAccounts, credentials: CredentialsState) {
+private fun DesktopAccountDetail(
+    account: SyncAccounts,
+    credentials: CredentialsState,
+) {
     when (account) {
         SyncAccounts.DROPBOX -> DropboxSyncScreen(credentials)
         SyncAccounts.GOOGLE_DRIVE -> GoogleDriveSyncScreen(credentials)
@@ -50,6 +53,7 @@ private fun DesktopAccountDetail(account: SyncAccounts, credentials: Credentials
         SyncAccounts.MINIFLUX -> MinifluxSyncScreen(credentials)
         SyncAccounts.BAZQUX -> BazquxSyncScreen(credentials)
         SyncAccounts.FEEDBIN -> FeedbinSyncScreen(credentials)
+        SyncAccounts.FOLDER -> Unit
         SyncAccounts.LOCAL -> Unit
     }
 }

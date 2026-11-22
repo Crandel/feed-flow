@@ -61,10 +61,12 @@ internal class FeedCategoryRepository(
         feedStateRepository.runUserWrite(onDatabaseFailure = Unit) {
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    gReaderRepository.deleteCategory(categoryId)
+                    gReaderRepository
+                        .deleteCategory(categoryId)
                         .fold(
                             onSuccess = {
-                                gReaderRepository.fetchFeedSourcesAndCategories()
+                                gReaderRepository
+                                    .fetchFeedSourcesAndCategories()
                                     .onErrorSuspend {
                                         feedStateRepository.emitErrorState(
                                             SyncError(errorCode = FeedSyncError.FetchFeedSourcesAndCategoriesFailed),
@@ -80,10 +82,12 @@ internal class FeedCategoryRepository(
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    feedbinRepository.deleteCategory(categoryId)
+                    feedbinRepository
+                        .deleteCategory(categoryId)
                         .fold(
                             onSuccess = {
-                                feedbinRepository.fetchFeedSourcesAndCategories()
+                                feedbinRepository
+                                    .fetchFeedSourcesAndCategories()
                                     .onErrorSuspend {
                                         feedStateRepository.emitErrorState(
                                             SyncError(errorCode = FeedSyncError.FetchFeedSourcesAndCategoriesFailed),
@@ -102,6 +106,7 @@ internal class FeedCategoryRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     databaseHelper.deleteCategory(
@@ -115,7 +120,10 @@ internal class FeedCategoryRepository(
         }
     }
 
-    suspend fun updateCategoryName(categoryId: CategoryId, newName: CategoryName) {
+    suspend fun updateCategoryName(
+        categoryId: CategoryId,
+        newName: CategoryName,
+    ) {
         feedStateRepository.runUserWrite(onDatabaseFailure = Unit) {
             val trimmedName = newName.trimmed()
             if (trimmedName.name.isBlank()) {
@@ -134,14 +142,16 @@ internal class FeedCategoryRepository(
 
             when (accountsRepository.getCurrentSyncAccount()) {
                 SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
-                    gReaderRepository.editCategoryName(categoryId, trimmedName)
+                    gReaderRepository
+                        .editCategoryName(categoryId, trimmedName)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditCategoryNameFailed))
                         }
                 }
 
                 SyncAccounts.FEEDBIN -> {
-                    feedbinRepository.editCategoryName(categoryId, trimmedName)
+                    feedbinRepository
+                        .editCategoryName(categoryId, trimmedName)
                         .onErrorSuspend {
                             feedStateRepository.emitErrorState(SyncError(FeedSyncError.EditCategoryNameFailed))
                         }
@@ -151,6 +161,7 @@ internal class FeedCategoryRepository(
                 SyncAccounts.DROPBOX,
                 SyncAccounts.GOOGLE_DRIVE,
                 SyncAccounts.ICLOUD,
+                SyncAccounts.FOLDER,
                 -> {
                     val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
                     databaseHelper.updateCategoryName(
@@ -171,9 +182,11 @@ internal class FeedCategoryRepository(
 
     suspend fun initCategories() {
         observeCategories().collect { categories ->
-            val categoriesWithEmpty = listOf(getEmptyCategory()) + categories.map { feedSourceCategory ->
-                feedSourceCategory.toCategoryItem()
-            }
+            val categoriesWithEmpty =
+                listOf(getEmptyCategory()) +
+                    categories.map { feedSourceCategory ->
+                        feedSourceCategory.toCategoryItem()
+                    }
             categoriesMutableState.update {
                 it.copy(
                     categories = categoriesWithEmpty.toPersistentList(),
@@ -182,11 +195,9 @@ internal class FeedCategoryRepository(
         }
     }
 
-    fun observeCategories(): Flow<List<FeedSourceCategory>> =
-        databaseHelper.observeFeedSourceCategories()
+    fun observeCategories(): Flow<List<FeedSourceCategory>> = databaseHelper.observeFeedSourceCategories()
 
-    fun observeCategoriesWithUnreadCount(): Flow<List<CategoryWithUnreadCount>> =
-        databaseHelper.observeCategoriesWithUnreadCount()
+    fun observeCategoriesWithUnreadCount(): Flow<List<CategoryWithUnreadCount>> = databaseHelper.observeCategoriesWithUnreadCount()
 
     /**
      * Persists the order of the category groups. A null entry represents the
@@ -205,15 +216,19 @@ internal class FeedCategoryRepository(
         databaseHelper.updateCategoryPositions(idsWithPosition)
     }
 
-    fun validateCategoryName(categoryId: CategoryId?, newName: CategoryName): CategoryNameValidationResult {
+    fun validateCategoryName(
+        categoryId: CategoryId?,
+        newName: CategoryName,
+    ): CategoryNameValidationResult {
         if (newName.trimmed().name.isBlank()) {
             return CategoryNameValidationResult.BLANK
         }
 
-        val isDuplicate = categoriesState.value.categories.any { category ->
-            category.id != categoryId?.value &&
-                category.name?.canonicalCategoryName() == newName.canonical()
-        }
+        val isDuplicate =
+            categoriesState.value.categories.any { category ->
+                category.id != categoryId?.value &&
+                    category.name?.canonicalCategoryName() == newName.canonical()
+            }
 
         return if (isDuplicate) {
             CategoryNameValidationResult.DUPLICATE
@@ -233,21 +248,31 @@ internal class FeedCategoryRepository(
                 return
             }
 
-            val categoryId = when (accountsRepository.getCurrentSyncAccount()) {
-                SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX ->
-                    gReaderRepository.buildCategoryId(trimmedName)
-                SyncAccounts.FEEDBIN -> feedbinRepository.buildCategoryId(trimmedName)
-                SyncAccounts.LOCAL,
-                SyncAccounts.DROPBOX,
-                SyncAccounts.GOOGLE_DRIVE,
-                SyncAccounts.ICLOUD,
-                -> trimmedName.name.hashCode().toString()
-            }
+            val categoryId =
+                when (accountsRepository.getCurrentSyncAccount()) {
+                    SyncAccounts.FRESH_RSS, SyncAccounts.MINIFLUX, SyncAccounts.BAZQUX -> {
+                        gReaderRepository.buildCategoryId(trimmedName)
+                    }
 
-            val category = FeedSourceCategory(
-                id = categoryId,
-                title = trimmedName.name,
-            )
+                    SyncAccounts.FEEDBIN -> {
+                        feedbinRepository.buildCategoryId(trimmedName)
+                    }
+
+                    SyncAccounts.LOCAL,
+                    SyncAccounts.DROPBOX,
+                    SyncAccounts.GOOGLE_DRIVE,
+                    SyncAccounts.ICLOUD,
+                    SyncAccounts.FOLDER,
+                    -> {
+                        trimmedName.name.hashCode().toString()
+                    }
+                }
+
+            val category =
+                FeedSourceCategory(
+                    id = categoryId,
+                    title = trimmedName.name,
+                )
             val cloudSessionId = feedSyncRepository.cloudSessionForEdit()
             databaseHelper.insertCategories(
                 listOf(category),
@@ -264,17 +289,18 @@ internal class FeedCategoryRepository(
         selectedCategoryName = selectedCategory?.name?.let { CategoryName(it) }
 
         categoriesMutableState.update { state ->
-            val updatedCategories = state.categories.map { categoryItem ->
-                if (categoryId.value == categoryItem.id) {
-                    categoryItem.copy(
-                        isSelected = true,
-                    )
-                } else {
-                    categoryItem.copy(
-                        isSelected = false,
-                    )
+            val updatedCategories =
+                state.categories.map { categoryItem ->
+                    if (categoryId.value == categoryItem.id) {
+                        categoryItem.copy(
+                            isSelected = true,
+                        )
+                    } else {
+                        categoryItem.copy(
+                            isSelected = false,
+                        )
+                    }
                 }
-            }
             state.copy(
                 categories = updatedCategories.toPersistentList(),
             )
@@ -292,17 +318,19 @@ internal class FeedCategoryRepository(
         categoryName: CategoryName,
         excludedCategoryId: String?,
     ): Boolean =
-        databaseHelper.getFeedSourceCategories()
+        databaseHelper
+            .getFeedSourceCategories()
             .any { category ->
                 category.id != excludedCategoryId &&
                     category.title.canonicalCategoryName() == categoryName.canonical()
             }
 
-    private fun getEmptyCategory() = CategoriesState.CategoryItem(
-        id = EMPTY_CATEGORY_ID,
-        name = null,
-        isSelected = selectedCategoryName?.name == null,
-    )
+    private fun getEmptyCategory() =
+        CategoriesState.CategoryItem(
+            id = EMPTY_CATEGORY_ID,
+            name = null,
+            isSelected = selectedCategoryName?.name == null,
+        )
 
     private companion object {
         // To maintain backward compatibility
