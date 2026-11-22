@@ -8,6 +8,7 @@ import com.prof18.feedflow.core.model.AccountConnectionUiState
 import com.prof18.feedflow.core.model.AccountSyncUIState
 import com.prof18.feedflow.core.model.FolderSynMessages
 import com.prof18.feedflow.core.utils.FeedSyncMessageQueue
+import com.prof18.feedflow.feedsync.folder.FolderNotAccessibleException
 import com.prof18.feedflow.feedsync.folder.FolderSettings
 import com.prof18.feedflow.feedsync.folder.FolderSyncDataSource
 import com.prof18.feedflow.shared.domain.feed.FeedFetcherRepository
@@ -64,6 +65,11 @@ class FolderSyncViewModel internal constructor(
                 feedSyncRepository.firstSync()
                 feedFetcherRepository.fetchFeeds()
                 emitLastSyncUpdate()
+            } catch (e: FolderNotAccessibleException) {
+                logger.d(e) { "The folder is not accessible" }
+                folderSettings.clearAll()
+                folderSyncUiMutableState.update { AccountConnectionUiState.Unlinked }
+                folderSyncMessageMutableState.emit(FolderSynMessages.NotAccessible)
             } catch (e: Throwable) {
                 logger.e(e) { "Error while linking the folder" }
                 folderSettings.clearAll()

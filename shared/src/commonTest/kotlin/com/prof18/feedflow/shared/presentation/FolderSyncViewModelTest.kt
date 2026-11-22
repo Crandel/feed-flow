@@ -82,18 +82,34 @@ class FolderSyncViewModelTest : KoinTestBase() {
     }
 
     @Test
-    fun `linkFolder emits an error and stays Unlinked when the folder is not accessible`() = runTest(testDispatcher) {
-        fakeFolderDataSource.shouldThrowOnCheckAccess = true
+    fun `linkFolder emits not accessible and stays Unlinked when the folder is not accessible`() =
+        runTest(testDispatcher) {
+            fakeFolderDataSource.shouldThrowOnCheckAccess = true
 
-        viewModel.folderSyncMessageState.test {
-            viewModel.linkFolder("/home/user/deleted-folder")
+            viewModel.folderSyncMessageState.test {
+                viewModel.linkFolder("/home/user/deleted-folder")
 
-            assertIs<FolderSynMessages.Error>(awaitItem())
+                assertIs<FolderSynMessages.NotAccessible>(awaitItem())
+            }
+
+            assertIs<Unlinked>(viewModel.folderConnectionUiState.value)
+            assertNull(folderSettings.getFolderLocation())
         }
 
-        assertIs<Unlinked>(viewModel.folderConnectionUiState.value)
-        assertNull(folderSettings.getFolderLocation())
-    }
+    @Test
+    fun `linkFolder emits a generic error and stays Unlinked when linking fails for another reason`() =
+        runTest(testDispatcher) {
+            fakeFolderDataSource.checkAccessFailure = IllegalStateException("boom")
+
+            viewModel.folderSyncMessageState.test {
+                viewModel.linkFolder("/home/user/weird-folder")
+
+                assertIs<FolderSynMessages.Error>(awaitItem())
+            }
+
+            assertIs<Unlinked>(viewModel.folderConnectionUiState.value)
+            assertNull(folderSettings.getFolderLocation())
+        }
 
     @Test
     fun `linkFolder restores the existing backup during the first sync`() = runTest(testDispatcher) {

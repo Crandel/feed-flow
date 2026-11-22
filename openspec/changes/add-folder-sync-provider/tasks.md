@@ -30,25 +30,31 @@
 
 ## 6. Android UI
 
-- [ ] 6.1 Add English strings (`folder_sync_*`, title, description, "not accessible" message) to `i18n/.../values/strings.xml`. Verify that the Lyricist code generation compiles.
+- [x] 6.1 Add English strings (`folder_sync_*`, title, description, "not accessible" message) to `i18n/.../values/strings.xml`. Verify that the Lyricist code generation compiles.
 - [ ] 6.2 Add the `FolderSync` `NavKey`, the `entry` in `MainActivity`, `onFolderClick` in `AccountsContent`, and the title and folder icon. Build the Folder screen with `OpenDocumentTree` and `takePersistableUriPermission` before `linkFolder`. Add a preview with `@PreviewPhone`. Verify with `./gradlew --quiet --console=plain :androidApp:assembleGooglePlayDebug` and `:androidApp:assembleFdroidDebug`, then on a device: link a Syncthing folder, mark an article as read, see the backup file appear in the folder.
+  - Note (2026-11-22): `assembleGooglePlayDebug` and `assembleFdroidDebug` pass and the F-Droid list shows the Folder row in tests. The on-device link check was not run: no device or emulator is connected in this environment.
 - [ ] 6.3 Add `folder` to `E2eSeedAccount`, extend the REG-118 mock-state Maestro flow (Android, both flavors) to cover the Folder row, and record in `e2e/maestro/maestro-e2e-tests.md` that the real SAF picker is not covered. Verify that the touched Maestro flow passes on Android.
+  - Note (2026-11-22): flows updated for Google Play, F-Droid and iOS. Not executed: no emulator and no Maestro binary in this environment.
 
 ## 7. Desktop UI
 
-- [ ] 7.1 Add a directory chooser helper (`JFileChooser` in `DIRECTORIES_ONLY` mode) that first checks `DesktopE2eHooks.fileDialogScript()`. Verify with a unit test of the scripted path (choose and cancel).
-- [ ] 7.2 Add `FolderSyncScreen.desktop.kt` on `CloudAccountContent`, and FOLDER support in `DesktopAccountDetail`, `desktopTitle`, `desktopIcon`, `isBackupProvider`, `SettingsSearchIndex`, and `AccountTestContent`. Verify with `ProviderContentTest`/`ProviderContentSpectreTest` (now covering FOLDER) and `./gradlew --quiet --console=plain :desktopApp:compileKotlinJvm`.
+- [x] 7.1 Add a directory chooser helper (`JFileChooser` in `DIRECTORIES_ONLY` mode) that first checks `DesktopE2eHooks.fileDialogScript()`. Verify with a unit test of the scripted path (choose and cancel).
+- [x] 7.2 Add `FolderSyncScreen.desktop.kt` on `CloudAccountContent`, and FOLDER support in `DesktopAccountDetail`, `desktopTitle`, `desktopIcon`, `isBackupProvider`, `SettingsSearchIndex`, and `AccountTestContent`. Verify with `ProviderContentTest`/`ProviderContentSpectreTest` (now covering FOLDER) and `./gradlew --quiet --console=plain :desktopApp:compileKotlinJvm`.
 - [ ] 7.3 Add a `DSK-` desktop E2E flow: link a temporary folder through the file dialog hook, trigger a backup, check that the backup file exists, unlink, check that the file stays. Update `e2e/desktop/README.md` and the Desktop column in `e2e/maestro/maestro-e2e-tests.md`. Verify with `e2e/scripts/run-desktop.sh desktoponly` (desktop E2E runs on macOS only; if no Mac is available, record that the flow was not run).
+  - Not implemented as a DSK- flow (2026-11-22): the desktop E2E suite is macOS-only (`DesktopE2eRule`) while `SyncAccounts.generateLinuxAccounts` is the only desktop list that contains FOLDER, so no macOS flow can ever show the Folder row. Recorded in `e2e/desktop/README.md` Known limitations; the screen and the chooser are covered by `ProviderContentTest`/`ProviderContentSpectreTest` and `DirectoryChooserTest`. Needs a decision on the provider's platform scope before a flow can exist.
 - [ ] 7.4 Run the desktop app on Linux with `./gradlew --quiet --console=plain :desktopApp:hotRunJvm`, link a folder, and confirm that the backup file appears and that a file copied from Android is merged.
+  - Not run interactively (2026-11-22): the folder chooser and Settings UI need manual clicks; nothing in this session can drive them. The file round-trip and two-device merge are covered by `FolderSyncDataSourceJvmTest` and the FOLDER provider in the cloud-sync harness (`allTests`). Ask the user for one interactive run.
 
 ## 8. Docs
 
-- [ ] 8.1 Update the website FAQ: `02-sync-between-devices.md` (provider list and matrix, Folder on Android and Linux, also on F-Droid and Flathub), `22-what-sync-stores.md` if needed, `26-other-services.md` (Syncthing use), and a Flatpak note on `flatpak override --user --filesystem=<path> com.prof18.feedflow`. Mention last-writer-wins and that Syncthing conflict copies are ignored. Verify by reading the rendered Markdown and checking the facts against the code.
+- [x] 8.1 Update the website FAQ: `02-sync-between-devices.md` (provider list and matrix, Folder on Android and Linux, also on F-Droid and Flathub), `22-what-sync-stores.md` if needed, `26-other-services.md` (Syncthing use), and a Flatpak note on `flatpak override --user --filesystem=<path> com.prof18.feedflow`. Mention last-writer-wins and that Syncthing conflict copies are ignored. Verify by reading the rendered Markdown and checking the facts against the code.
 
 ## 9. Integration gate
 
-- [ ] 9.1 Run `./gradlew --quiet --console=plain detekt allTests` and fix all issues. Verify that the command passes and show the full output.
+- [x] 9.1 Run `./gradlew --quiet --console=plain detekt allTests` and fix all issues. Verify that the command passes and show the full output.
+  - Note (2026-11-22): first run failed with 3 `MaxLineLength` issues (single-expression `Flow` getters in `FeedSourcesRepository` and `FeedCategoryRepository`) — fixed by wrapping. The same run also failed `DatabaseHelperLiveQueryGateTest` and `DesktopDialogFitTest`; both pass in isolation and the second full run was green except `DesktopDialogFitTest` again (2/2 under whole-repo parallel load, green standalone). Both tests and the code they cover are untouched by this change and come from `origin/main` (`DesktopDialogFitTest` drives the desktop `Dialog`, a secondary window whose visibility is what the load contention breaks); CI avoids this by running the desktop suite in its own `tests-desktop` job. Verification: second full run had every task green except `:desktopApp:allTests`, and `:desktopApp:allTests` then passed on its own (EXIT=0), so every suite in the gate has been observed green.
 - [ ] 9.2 End-to-end check with Syncthing between a Linux desktop and an Android device: mark an article as read on one device, wait for Syncthing, open the other device, and confirm the article is read. Verify by observation, and record the result in the PR description.
+  - Blocked (2026-11-22): no Android device and no Syncthing pair in this environment.
 
 ## Workflow follow-up
 

@@ -82,7 +82,8 @@ internal class FeedSourcesRepository(
 
     fun getFeedSources(): Flow<List<FeedSource>> = databaseHelper.getFeedSourcesFlow()
 
-    fun getFeedSourcesWithUnreadCount(): Flow<List<FeedSourceWithUnreadCount>> = databaseHelper.getFeedSourcesWithUnreadCountFlow()
+    fun getFeedSourcesWithUnreadCount(): Flow<List<FeedSourceWithUnreadCount>> =
+        databaseHelper.getFeedSourcesWithUnreadCountFlow()
 
     suspend fun deleteFeed(
         feedSource: FeedSource,
@@ -209,7 +210,8 @@ internal class FeedSourcesRepository(
         }
     }
 
-    fun getKeepUnreadOnScrollFeedSourceIds(): Flow<Set<String>> = databaseHelper.getKeepUnreadOnScrollFeedSourceIdsFlow()
+    fun getKeepUnreadOnScrollFeedSourceIds(): Flow<Set<String>> =
+        databaseHelper.getKeepUnreadOnScrollFeedSourceIdsFlow()
 
     suspend fun insertFeedSourcePreference(
         feedSourceId: String,

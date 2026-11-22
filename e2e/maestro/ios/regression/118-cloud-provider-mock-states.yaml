@@ -24,6 +24,8 @@ appId: com.prof18.feedflow.dev
     id: settings_accounts
 - assertVisible:
     id: accounts_provider_dropbox
+- assertNotVisible:
+    id: accounts_provider_folder
 - assertVisible:
     id: accounts_add_account
     enabled: false

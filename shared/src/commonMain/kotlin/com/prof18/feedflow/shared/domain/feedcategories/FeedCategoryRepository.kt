@@ -197,7 +197,8 @@ internal class FeedCategoryRepository(
 
     fun observeCategories(): Flow<List<FeedSourceCategory>> = databaseHelper.observeFeedSourceCategories()
 
-    fun observeCategoriesWithUnreadCount(): Flow<List<CategoryWithUnreadCount>> = databaseHelper.observeCategoriesWithUnreadCount()
+    fun observeCategoriesWithUnreadCount(): Flow<List<CategoryWithUnreadCount>> =
+        databaseHelper.observeCategoriesWithUnreadCount()
 
     /**
      * Persists the order of the category groups. A null entry represents the

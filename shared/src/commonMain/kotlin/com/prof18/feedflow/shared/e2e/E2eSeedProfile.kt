@@ -47,6 +47,7 @@ enum class E2eSeedAccount(
     MINIFLUX("miniflux", SyncAccounts.MINIFLUX),
     FEEDBIN("feedbin", SyncAccounts.FEEDBIN),
     BAZQUX("bazqux", SyncAccounts.BAZQUX),
+    FOLDER("folder", SyncAccounts.FOLDER),
     ;
 
     companion object {

@@ -49,6 +49,7 @@ fun AccountsContent(
     onMinifluxClick: () -> Unit,
     onBazquxClick: () -> Unit,
     onFeedbinClick: () -> Unit,
+    onFolderClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
     selectedAccount: SyncAccounts? = null,
@@ -85,7 +86,7 @@ fun AccountsContent(
                         SyncAccounts.MINIFLUX -> onMinifluxClick
                         SyncAccounts.BAZQUX -> onBazquxClick
                         SyncAccounts.FEEDBIN -> onFeedbinClick
-                        SyncAccounts.FOLDER -> ({ })
+                        SyncAccounts.FOLDER -> onFolderClick
                     }
                 Row(
                     modifier =

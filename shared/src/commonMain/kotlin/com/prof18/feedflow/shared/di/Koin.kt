@@ -736,6 +736,7 @@ private fun getCoreModule(appConfig: AppConfig) =
                 feedStateRepository = get(),
                 dropboxSettings = get(),
                 googleDriveSettings = get(),
+                folderSettings = get(),
                 icloudSettings = get(),
                 networkSettings = get(),
                 audioPositions = get(),

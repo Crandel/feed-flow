@@ -72,7 +72,10 @@ internal fun SyncAccounts.desktopIcon(): ImageVector? =
     }
 
 internal fun SyncAccounts.isBackupProvider(): Boolean =
-    this == SyncAccounts.DROPBOX || this == SyncAccounts.GOOGLE_DRIVE || this == SyncAccounts.ICLOUD
+    this == SyncAccounts.DROPBOX ||
+        this == SyncAccounts.GOOGLE_DRIVE ||
+        this == SyncAccounts.ICLOUD ||
+        this == SyncAccounts.FOLDER
 
 // Single-color glyphs follow the theme text color. BazQux keeps its light blue, which reads on both themes;
 // FreshRSS's dark blue gets lost on dark backgrounds, so it switches to the text color there.

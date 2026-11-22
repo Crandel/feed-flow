@@ -8,6 +8,7 @@ class FolderSyncDataSourceFake : FolderSyncDataSource {
 
     var isLinkedValue: Boolean = false
     var shouldThrowOnCheckAccess: Boolean = false
+    var checkAccessFailure: Throwable? = null
     var shouldThrowOnReleaseAccess: Boolean = false
     var storedBackup: ByteArray? = null
 
@@ -26,6 +27,7 @@ class FolderSyncDataSourceFake : FolderSyncDataSource {
 
     override suspend fun checkAccess() {
         checkAccessCallCount++
+        checkAccessFailure?.let { throw it }
         if (shouldThrowOnCheckAccess) {
             throw FolderNotAccessibleException()
         }

@@ -9,6 +9,7 @@ import com.prof18.feedflow.core.model.SyncAccounts
 import com.prof18.feedflow.desktop.accounts.bazqux.BazquxAccountContent
 import com.prof18.feedflow.desktop.accounts.dropbox.DropboxAccountContent
 import com.prof18.feedflow.desktop.accounts.feedbin.FeedbinAccountContent
+import com.prof18.feedflow.desktop.accounts.folder.FolderAccountContent
 import com.prof18.feedflow.desktop.accounts.freshrss.FreshRssAccountContent
 import com.prof18.feedflow.desktop.accounts.googledrive.GoogleDriveAccountContent
 import com.prof18.feedflow.desktop.accounts.icloud.ICloudAccountContent
@@ -100,7 +101,13 @@ internal fun AccountTestContent(fake: FakeDesktopAccount) {
         }
 
         SyncAccounts.FOLDER -> {
-            error("FOLDER has no provider connection form until the Folder desktop screen exists")
+            FolderAccountContent(
+                uiState = state,
+                credentialsState = draft,
+                onConnect = fake::connect,
+                onBackup = fake::backup,
+                onDisconnect = fake::disconnect,
+            )
         }
     }
 }

@@ -244,6 +244,12 @@
     <string name="no_google_drive_sync_yet">Not backed up to Google Drive yet. Select Back up now to start.</string>
     <string name="google_drive_connect_button">Connect Google Drive</string>
     <string name="google_drive_desktop_sync_description">Click the button below to connect your Google Drive account. A browser window will open for authentication. Once you\'ve completed the sign-in, you can return to this app.</string>
+    <string name="folder_sync_common_description">Connect a folder to sync feeds, categories, read and bookmarked articles between your Android and desktop devices. FeedFlow saves a backup file in the folder; another tool like Syncthing keeps the folder in sync between the devices. FeedFlow won\'t have any access to any of your other files</string>
+    <string name="folder_sync_error">There was an error while connecting to the folder. Please try again</string>
+    <string name="folder_sync_not_accessible_error">The folder is not accessible. Make sure it still exists and that FeedFlow can write to it, then connect the folder again</string>
+    <string name="folder_sync_success">The folder is successfully connected</string>
+    <string name="no_folder_sync_yet">Not backed up to the folder yet. Select Back up now to start.</string>
+    <string name="folder_connect_button">Choose folder</string>
     <string name="icloud_sync_description">Connect your iCloud account to sync feeds, categories, read and bookmarked articles between your iOS, iPadOS and macOS devices. The data will be saved in an app-specific folder; FeedFlow won\'t have any access to any of your files</string>
     <string name="add_account_button">Add account</string>
     <string name="icloud_sync_success">Your iCloud account is successfully connected</string>

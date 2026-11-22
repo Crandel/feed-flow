@@ -117,8 +117,7 @@ class ProviderContentSpectreTest(private val account: SyncAccounts, private val 
         @JvmStatic
         @Parameterized.Parameters(name = "{0}, {1}")
         fun providers(): List<Array<Any>> = SyncAccounts.entries
-            // FOLDER joins once FolderSyncScreen.desktop.kt exists (add-folder-sync-provider task 7.2).
-            .filter { it != SyncAccounts.LOCAL && it != SyncAccounts.FOLDER }
+            .filter { it != SyncAccounts.LOCAL }
             .flatMap { account ->
                 listOf(ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.OLED).map { theme -> arrayOf(account, theme) }
             }

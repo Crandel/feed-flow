@@ -27,6 +27,9 @@ appId: com.prof18.feedflow.debug
 - assertNotVisible:
     id: accounts_provider_google_drive
 - assertVisible:
+    id: accounts_provider_folder
+    enabled: false
+- assertVisible:
     id: accounts_provider_miniflux
     enabled: true
 - assertVisible:
